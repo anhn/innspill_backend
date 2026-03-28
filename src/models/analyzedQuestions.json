@@ -1,0 +1,117 @@
+{
+    "course_review_framework": {
+      "1. Learning Outcomes": {
+        "Clarity of AI Expectations": [
+          "Do current learning outcomes specify whether students should use, evaluate, or avoid AI tools?",
+          "Should AI literacy (understanding, ethical use, critical evaluation) be part of intended competencies?",
+          "Are verbs like analyze, create, reflect still authentic when AI can perform parts of these actions?"
+        ],
+        "Cognitive Level Fit": [
+          "Which outcomes should demonstrate unaided human reasoning (without AI)?",
+          "Which can intentionally leverage AI to achieve higher-order synthesis or creativity?",
+          "Does each outcome align with realistic future workplace expectations involving AI?"
+        ],
+        "Assessment Alignment": [
+          "Can each outcome be verifiably assessed without ambiguity about AI involvement?"
+        ]
+      },
+  
+      "2. Teaching and Learning Activities": {
+        "Activity Design": [
+          "Which classroom activities are at risk of being replaced by AI automation?",
+          "How can we redesign them to emphasize judgment, reasoning, collaboration, or reflection?",
+          "Are there activities that model responsible AI use rather than merely discussing it?"
+        ],
+        "Instructor Role": [
+          "How does the teacher shift from information source to cognitive coach?",
+          "Should AI-based tools be embedded in tutorials or group work to enhance engagement?"
+        ],
+        "Student Interaction": [
+          "How can discussions, debates, or peer-review activities counter passive AI reliance?",
+          "Are there collaborative activities where students critique AI outputs or design AI prompts together?"
+        ]
+      },
+  
+      "3. Assessment and Examination": {
+        "Integrity and Verification": [
+          "Could this assessment be completed entirely by ChatGPT or similar tools?",
+          "If yes, how can it be modified to require personal reflection, context, or process evidence?",
+          "Are there oral or process-based checks to confirm authorship?"
+        ],
+        "AI-Resistant Design": [
+          "Does the assessment involve analysis of local or experiential data that AI cannot easily replicate?",
+          "Can the assignment require documentation of AI use (tool, prompt, reasoning)?"
+        ],
+        "Form and Format": [
+          "Should I diversify assessment forms (oral exams, portfolios, reflection logs, simulations)?",
+          "Does the rubric distinguish between AI-assisted and independent performance?"
+        ]
+      },
+  
+      "4. Policy and Transparency": {
+        "Institutional Alignment": [
+          "Does the course comply with university or national AI (KI) guidelines?",
+          "Is the course syllabus transparent about allowed or banned AI tools?",
+          "Do students sign or acknowledge AI-use statements?"
+        ],
+        "Documentation Practice": [
+          "How should students declare AI use in written work (appendix, footnote, metadata)?",
+          "Does the syllabus include examples of acceptable and unacceptable AI use?"
+        ],
+        "Revision and Monitoring": [
+          "Who reviews AI policy compliance within the program?",
+          "Is there a plan to update the course annually as AI capabilities evolve?"
+        ]
+      },
+  
+      "5. Course Content Integrating with AI Literacy and Capacity Building": {
+        "For Students": [
+          "Does the course teach students how AI works, its limits, and biases?",
+          "Do students practice prompt design, fact-checking, and ethical reflection?",
+          "Are they taught how to critique AI-generated material?"
+        ],
+        "For Instructors": [
+          "Are instructors trained to use AI responsibly in teaching preparation?",
+          "Can AI support formative feedback, accessibility, or inclusivity?"
+        ]
+      },
+  
+      "6. Ethics, Equity, and Accessibility": {
+        "Equity": [
+          "Do all students have equal access to permitted AI tools?",
+          "Are AI-supported assessments fair for neurodiverse or low-resource learners?",
+          "Does AI use reinforce or mitigate bias?"
+        ],
+        "Ethics": [
+          "Are students required to reflect on the ethical implications of AI use?",
+          "How does the course model academic integrity and authorship in the AI era?"
+        ],
+        "Sustainability and Well-being": [
+          "Does the course promote balanced digital use and critical mindfulness?",
+          "Are energy or privacy impacts of AI tools considered?"
+        ]
+      },
+  
+      "7. Reading Materials": {
+        "AI Literacy Resources": [
+          "What are relevant reading materials for AI literacy in this type of course?"
+        ]
+      },
+  
+      "8. Meta-Layer (For AI-Enabled Revision Tooling)": {
+        "Constructive Alignment": [
+          "Are learning outcomes, teaching activities, and assessments coherently aligned given the AI usage level?"
+        ],
+        "AI-Susceptibility Scan": [
+          "Which course elements could be trivially generated by LLMs?"
+        ],
+        "Policy Traceability": [
+          "Is there explicit reference to institutional AI regulations?"
+        ],
+        "Revision Priority Ranking": [
+          "Which components require immediate revision to remain pedagogically sound under GenAI conditions?"
+        ]
+      }
+    }
+  }
+  

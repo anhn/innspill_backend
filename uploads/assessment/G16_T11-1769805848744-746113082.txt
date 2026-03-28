@@ -1,0 +1,76 @@
+﻿Group 16 - Victor Pourcel - Noah Coudert
+Requirements for an AI guidebook
+1. Student Workspace & Session Management
+1. As a student, I want to categorise my AI sessions by learning phase (i.e. Discovery, Brainstorming, Review), so that my usage log accurately reflects the intent of my study session.
+2. As a student, I want to upload course context (slides/notes) into a secure sandbox, so that the AI's clarification is strictly relevant to the course material rather than general internet data and  my data is not used for model training.
+3. As a student, I want to capture the specific insights generated during project brainstorming so that I can properly attribute or declare which ideas originated from AI.
+4. As a student, I want the system to filter out knowledge that is outside the scope of the current syllabus, so that I can focus strictly on material required for course completion.
+5. As a student, I want to document the specific prompts and context parameters I provided to the AI for my team project, so that I can easily retrieve my prompts and those of my friends…
+6. As a student, I want my AI session history and usage logs to synchronise in real-time across my computer, phone, and tablet, so that I maintain a continuous, verifiable audit trail regardless of which device I am using.
+7. As a student, I want to access a "Quick Lookup" mode on the mobile interface, so that I can retrieve definitions or facts immediately ("fast access") without loading the full project management dashboard used on the computer.
+8. As a student, I want to categorise my sessions as either "Academic/Coursework" or "Personal/Abstract," so that I can freely "formalise abstract ideas" without fear that these early, messy thoughts will be treated as academic submissions.
+9.  As a Student, I want to use specific "Research Support" tools (like summarisation or citation finding) that automate low-level tasks, so that I can focus my mental energy on "higher-order thinking and innovation."
+2. Pedagogy, Content Quality & Translation
+1. As a student, I want the AI to provide citations or direct links to the official course material (e.g., lecture slides, textbooks) for every claim it makes, so that I can independently verify the information and not rely blindly on the AI.
+2. As a student, I want to view examples of compliant answer formats (e.g., specific notation, essay structure) required for exams, so that my output matches the academic standards of the course.
+3. As a student, I want to access a translation or multilingual interface within a secure environment, so that I can verify my conceptual understanding of the ideas proposed by the tool in different languages without exposing assignment details to external translation tools.
+4. As a student, I want to access a "Tutor Mode" that asks leading questions instead of providing direct answers, so that I can use AI to understand difficult concepts even in stricter courses without violating academic integrity.
+5. As a student, I want the system to prioritise "sourcing" over "generation" (retrieval-augmented generation), so that the "direction" provided is always grounded in verified academic content rather than statistical probability.
+6. As a Student, I want to access "Structured Guidance" workflows (e.g., step-by-step scaffolding) for specific tasks, so that I learn how to integrate AI effectively into my process rather than using it as a shortcut.
+7. As a Student, I want to view specific scenarios defining the boundary between "Collaboration" (with AI or peers) and "Independent Work," so that I understand the nuances of the policy for my specific assignment.
+3. Academic Integrity, Assessment & Compliance
+1. As a student, I want to view a standardised "AI Permission Status" and “Ethical Guidelines” (e.g., Allowed, Restricted, Prohibited) on the dashboard of every course, so that I do not have to search through complex pages to find the rules.
+2. As a student, I want to access a central repository of "Allowed Use Cases" defined by the institution (e.g., "Intelligent Use"), so that I have a safe baseline for usage when specific teacher instructions are missing.
+3. As a student, I want the AI interface to clearly display a "Restricted Mode" or "Exam Lock" status during scheduled assessments, so that I have visual confirmation that the tool is compliant with the exam rules.
+4. As an administrator, I want to view a report of "Blocked Attempts" during exam windows, so that the institution can identify if students attempted to bypass restrictions.
+5. As an instructor, I want to customise the "AI Permissions" at the assignment level (e.g., "Tutor Mode" allowed, "Generation" blocked), so that the tool's capabilities match the specific learning outcomes of my course.
+6. As a student, I want the system to restore full functionality immediately after the exam window closes, so that my "Discovery/Review" workflow is not hindered by lingering restrictions.
+7. As a Student, I want to attach a specific "AI Declaration" form to each assignment submission, so that I can formally disclose which parts of my work were AI-assisted in compliance with school policy.
+8. As a Student, I want the system to run an "Automated Compliance Check" on my declared usage before I submit, so that I receive immediate feedback on whether I have violated any ethical guidelines.
+9. As an Institution, I want the system to detect and block "Ghostwriting" behaviours while being in restricted mode(e.g., generating entire essays in one prompt), so that the tool does not automate or facilitate academic dishonesty.
+4. Ethics, Critical Thinking & Student Growth
+1. As a student, I want the system to display clear disclaimers or "confidence scores" on its answers, so that I am constantly reminded that the output is not the absolute truth.
+2. As a Student, I want the system to present "Critical Thinking Prompts" (e.g., "Check for bias," "Verify this source") alongside the AI's output, so that I am trained to evaluate the ethical implications of the content rather than accepting it passively.
+3. As a Student, I want to fill out a "Reflection Field" at the end of a session describing how I used the tool to learn, so that I can demonstrate personal responsibility and accountability for my academic work.
+4. As a Student, I want to access interactive "Ethical Implication" tutorials so that I can understand the specific moral and academic risks of AI before I use it for an assignment.
+5. As a Student, I want the AI interface to prompt me to evaluate the output (e.g., "Is this accurate?", "Is this biased?"), so that I am nudged to be a "critical thinker" rather than just a "consumer of technology."
+6. As a Student, I want to easily access a "Report Bias" button on every response, so that I can flag discriminatory content and help maintain an inclusive learning environment.
+7. As an Institution, I want the system's compliance warnings to be educational (explaining why) rather than just restrictive, so that the tool fosters "personal responsibility rather than merely adhering to compliance rules."
+5. Privacy, Data Safety & Identity Management
+
+
+1. As a student, I want a "Data Visibility Dashboard" that clearly shows exactly which users (professors, admins, or no one) have access to my current session, so that I never have to wonder if I am being "spied on."
+2. As a student, I want to toggle a strictly "Private Mode" (or Incognito Mode) within the application, so that I can generate emails or ask personal questions without that data being logged or accessible to the university.
+3. As an administrator, I want to configure a "Grading Firewall" that prevents instructors from accessing their students' AI logs until after final grades are submitted, so that unconscious bias cannot affect the grading process.
+4. As a Student or Faculty Member, I want to log in to the AI Guidebook using my existing university Single Sign-On (SSO) credentials (e.g., LDAP, SAML, OAuth), so that I do not have to manage a new password and unauthorised access is prevented.
+5. As an institution, I want the system to guarantee a "Safe Sandbox" environment where data is legally bound to never be used for disciplinary action (unless academic misconduct is flagged), so that students feel safe to "fail and improve."
+6. As a student, I want the tool’s data collection policy to be strictly limited to "Educational Purposes" by default, so that the university cannot repurpose my "general assistant" usage for behavioural profiling.
+7. As a Student, I want the system to utilise "PII Detection Filters" (e.g., regex for phone numbers, emails) that warn me or block the message if I accidentally type personal contact details, so that I do not inadvertently share data that identifies me.
+8. As a Data Protection Officer, I want the AI to be trained to refuse or redact "Special Category Data" (e.g., mentions of health or political opinions), so that the institution does not process sensitive data without the required "heightened care" and legal grounds.
+9. As a Student, I want the interface to provide a "Contextual Consent Pop-up" if I attempt to upload academic records (like a transcript), so that I can explicitly grant permission for that specific functionality.
+10. As a Security Administrator, I want the system to automatically detect and block patterns resembling passwords or API tokens, so that students are physically prevented from sharing credentials even if they try.
+11. As a Student, I want my responses to satisfaction surveys to be anonymised by the system, so that I can provide honest feedback without fear of retaliation.
+12. As an Administrator, I want to enforce strict Role-Based Access Control (RBAC), ensuring that Faculty cannot see data outside their courses and Students cannot see others' logs, so that permissions are perfectly "aligned with their responsibilities."
+13. As an Institution, I want to grant access via distinct user profiles (Student vs. Faculty vs. Officer), so that the interface and features automatically adapt to the specific needs of that role upon login.
+14. As a Data Protection Officer, I want the data transfer protocols to strictly adhere to institutional security policies (e.g., Encryption in Transit), so that the integration meets all legal and ethical standards regarding student privacy.
+15. As an Administrator, I want the data storage architecture to be fully compliant with GDPR/FERPA (or local privacy regulations), so that the system meets the "absolute functional border" of data privacy.
+6. Administration, Feedback & Analytics
+1. As a teacher, I want to publish my AI policy updates directly to the students' activity stream, so that students stop "assuming" permissions and operate on current facts.
+2. As an Administrator, I want to view a real-time dashboard displaying the User Adoption Rate (segmented by students and faculty), so that I can gauge the project's reach and engagement levels.
+3. As a Student, I want to submit feedback or complete satisfaction surveys directly within the application, so that the administration can measure my perceived value of the tool.
+4. As a Product Owner, I want to deploy in-app micro-surveys and focus group recruitment forms directly through the platform, so that I can continuously gather "qualitative and quantitative feedback" on usability.
+5. As a Faculty Member, I want to link specific "Clear Guidelines" to my assignment description, so that students have immediate access to the relevant policy rules right when they start their work.
+6. As an Administrator, I want to update the Training Materials via a Content Management System (CMS), so that the help documentation automatically matches the new system rules.
+7. As an IT Architect, I want the analytics module to be compatible with standard BI tools (e.g., Tableau, PowerBI) or exportable to CSV/JSON, so that "Compliance Metrics" and "Adoption Rates" can be analysed using the institution's existing reporting infrastructure.
+8. As an Administrator, I want the metrics to be visualised (e.g., trend lines, heat maps) rather than just raw data tables, so that I can quickly identify "Success" or "Failure" patterns at a glance.
+7. Technical Architecture, UX & Performance
+1. As a student, I want the system’s response time and accuracy to be comparable to leading public AI tools (e.g., ChatGPT), so that I am not discouraged by a downgrade in efficiency.
+2. As a student, I want an interface that is intuitive and engaging ("fun"), so that the learning experience is enjoyable and competitive with commercial tools.
+3. As an institution, I want the system to support granular policy definitions (per course, per task) rather than a global "on/off" switch, so that teachers can adapt the tool to their specific "type of course."
+4. As a student, I want the system to be developed as a Responsive Web App (or Cross-Platform Native App) supporting Windows/Mac, iOS, and Android, so that I am not forced to buy specific hardware to access the school's tool.
+5. As a student, I want the desktop interface to be adaptable for plural (two or more) information display (e.g., side-by-side views), so that it supports deep work sessions, which are the "main medium" for my studies.
+6. As a Student, I want the policy explanations to be written in plain, non-legalistic language (e.g., simplified English), so that I can actually understand the "nuances" without being confused by administrative jargon.
+7. As a Developer, I want the system to follow a Modular Architecture (decoupling the Rule Engine from the Core Application), so that I can deploy "rule adjustments" or content updates without taking the entire application offline.
+8. As an Institution, I want the Compliance Algorithms to be configurable (dynamic parameters) rather than hard-coded, so that the system can "remain aligned with evolving requirements" and legal standards with minimal engineering effort.
+9. As an IT Administrator, I want the integration processes (e.g., data syncing) to be optimised for low resource usage, so that the deployment of the AI tool does not slow down or crash the main Learning Management System.
+10. As a Student, I want the use of the AI Guidebook to be strictly optional for my coursework, so that I am never pressured into using tools that I am uncomfortable with or that undermine my academic autonomy.

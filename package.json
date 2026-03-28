@@ -1,0 +1,48 @@
+{
+  "name": "ai4edu-backend",
+  "version": "1.0.0",
+  "description": "Backend API for AI4EDU chatbot services with multi-agent architecture",
+  "main": "app.js",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "dev": "nodemon scripts/start.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:db": "node test-db-connection.js",
+    "seed:users": "node scripts/seed-users.js"
+  },
+  "keywords": [
+    "ai",
+    "education",
+    "chatbot",
+    "multi-agent"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.2",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "express-session": "^1.17.3",
+    "helmet": "^7.1.0",
+    "joi": "^17.11.0",
+    "mongoose": "^8.0.3",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.20.1",
+    "passport": "^0.7.0",
+    "passport-facebook": "^3.0.0",
+    "passport-google-oauth20": "^2.0.0",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.6.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "supertest": "^6.3.3"
+  }
+}

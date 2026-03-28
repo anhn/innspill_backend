@@ -1,0 +1,61 @@
+Critical Factors Influencing Adoption of Blockchain-Enabled Smart Contracts in Construction Projects
+Blockchain and Information Integration: Applications in New Zealand’s Prefabrication Supply Chain
+Blockchain supported BIM data provenance for construction projects
+A blockchain-based integrated document management framework for construction applications
+Securing interim payments in construction projects through a blockchain-based framework
+Understanding the Determinants of Blockchain Adoption in the Engineering-Construction Industry: Multi-Stakeholders’ Analyses
+Blockchain technology in the construction industry: mapping current research trends using social network analysis and clustering
+Financial Contract Administration in Construction via Cryptocurrency Blockchain and Smart Contract: A Proof of Concept
+The application of blockchain-based crypto assets for integrating the physical and financial supply chains in the construction & engineering industry
+Exploring the Barriers against Using Cryptocurrencies in Managing Construction Supply Chain Processes
+Assessing the usability of blockchain for sustainability: Extending key themes to the construction industry
+Blockchain-enabled cyber-physical smart modular integrated construction
+Evaluation of Production of Digital Twins Based on Blockchain Technology
+A Systematic evaluation of blockchain-enabled contract administration in construction projects
+Intelligent contract adoption in the construction industry: Concept development
+Construction information authentication and integrity using blockchain-oriented watermarking techniques
+Building Information Management (BIM) and Blockchain (BC) for Sustainable Building Design Information Management Framework
+Blockchain-Enabled IoT-BIM Platform for Supply Chain Management in Modular Construction
+Factors Influencing the Adoption of Blockchain in the Construction Industry: A Hybrid Approach Using PLS-SEM and fsQCA
+Sensor-Integrated Hybrid Blockchain System for Supply Chain Coordination in Volumetric Modular Construction
+A Study on the Application of Blockchain Technology in the Construction Industry
+Insights into Blockchain Implementation in Construction: Models for Supply Chain Management
+Software Architecture and Non-Fungible Tokens for Digital Twin Decentralized Applications in the Built Environment
+Project Data Categorization, Adoption Factors, and Non-Functional Requirements for Blockchain Based Digital Twins in the Construction Industry 4.0
+Adoption of Blockchain Technology through Digital Twins in the Construction Industry 4.0: A PESTELS Approach
+A decentralized structure to reduce and resolve construction disputes in a hybrid blockchain network
+Potential Application of Blockchain Technology for Embodied Carbon Estimating in Construction Supply Chains
+Shifting trust in construction supply chains through blockchain technology
+Blockchain-aided information exchange records for design liability control and improved security
+Blockchain technology: Is it hype or real in the construction industry?
+bcBIM: A Blockchain-Based Big Data Model for BIM Modification Audit and Provenance in Mobile Cloud
+Modelling the blockchain adoption barriers in the AEC industry
+On-Site Construction Quality Inspection Using Blockchain and Smart Contracts
+Understanding the Determinants of Blockchain Technology Adoption in the Construction Industry
+The outlook of blockchain technology for construction engineering management
+A smart contract system for security of payment of construction contracts
+Understanding barriers to the adoption of blockchain-enabled smart contracts in construction projects: perspectives of construction practitioners
+To what extent can smart contracts replace traditional contracts in construction project?
+Administrative risks challenging the adoption of smart contracts in construction projects
+Clinical characteristics of acute non-varicose upper gastrointestinal bleeding and the effect of endoscopic hemostasis
+A New Election Algorithm for DPos Consensus Mechanism in Blockchain
+Automated Payment and Contract Management in the Construction Industry by Integrating Building Information Modeling and Blockchain-Based Smart Contracts
+Integrating Blockchain into Carbon Emissions Control in Construction Projects: A Conceptual Framework Development
+Motivating Reliable Collaboration for Modular Construction: Shapley Value-Based Smart Contract
+Advancing Hematopoietic Stem Cell Transplantation Typing: Harnessing Hyperledger Fabric's Blockchain Architecture
+A roadmap for overcoming barriers to implementation of blockchain-enabled smart contracts in sustainable construction projects
+EtherFuzz: Mutation Fuzzing Smart Contracts for TOD Vulnerability Detection
+Evaluation of Potential Cryptocurrency Development Ability in Terrorist Financing
+Critical success factors for smart contract implementation in the construction industry: a hybrid ISM-DEMATEL approach
+BIM-blockchain integrated automatic asset tracking and delay propagation analysis for prefabricated construction projects
+Expression profiling of N6-methyladenosine modified circRNAs in acute myeloid leukemia
+Applications of distributed ledger technology (DLT) and Blockchain-enabled smart contracts in construction
+The advancement of polysaccharides in disease modulation: Multifaceted regulation of programmed cell death
+ORTHRUS: A Model for a Decentralized and Fair Data Marketplace Supporting Two Types of Output
+Decentralized Privacy-Preserving Data Aggregation Scheme for Smart Grid Based on Blockchain
+A Blockchain-Enabled Decentralized Autonomous Access Control Scheme for Data Sharing
+Effects of the Blockchain and Artificial Intelligence on Value Cocreation in Construction Projects: A Mixed Methods Study
+Novel perceptions and insights into the rare hematologic malignancy of acute megakaryocytic leukemia: a multicenter clinical retrospective study
+Blockchain-Based Intelligent Risk Management Decision Support System for Supply Chain Financing
+Adoption of smart contracts in the construction industry: an institutional analysis of drivers and barriers
+Secure environmental, social, and governance (ESG) data management for construction projects using blockchain

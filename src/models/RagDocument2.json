@@ -1,0 +1,163 @@
+{
+    "id": "AI_READING_MATERIALS_2025_01",
+    "source_type": "reading_list",
+    "document_title": "Recommended Reading Materials on Artificial Intelligence and AI Literacy",
+    "section_title": "AI Literacy and Disciplinary Reading List – Classified by Education Level and Major Type",
+    "chunk_text": [
+      {
+        "education_level": "Beginner / General Audience",
+        "major_type": "General AI Literacy",
+        "readings": [
+          {
+            "title": "Artificial Intelligence: A Guide for Thinking Humans",
+            "author": "Melanie Mitchell",
+            "year": 2019,
+            "language": "English",
+            "summary": "An accessible and humorous introduction to AI concepts and history, balancing optimism with realistic limitations of AI capabilities.",
+            "recommendation": "Excellent for newcomers who want conceptual clarity without technical formulas."
+          },
+          {
+            "title": "The Myth of Artificial Intelligence: Why Computers Can’t Think the Way We Do",
+            "author": "Erik J. Larson",
+            "year": 2021,
+            "language": "English",
+            "summary": "Challenges the belief that AI will reach human-level intelligence, explaining cognitive and philosophical limits of current technology.",
+            "recommendation": "Ideal for readers skeptical of AI hype and interested in philosophical discussion."
+          },
+          {
+            "title": "Myten om maskinene",
+            "author": "Morten Goodwin",
+            "year": 2020,
+            "language": "Norwegian",
+            "summary": "A Norwegian introduction debunking myths about AI through accessible stories and humor, offering a local perspective.",
+            "recommendation": "Perfect for Nordic readers seeking approachable, non-technical AI insight."
+          },
+          {
+            "title": "Maskiner som tenker: algoritmenes hemmeligheter og veien til kunstig intelligens",
+            "author": "Inga Strümke",
+            "year": 2023,
+            "language": "Norwegian",
+            "summary": "A best-selling, highly readable overview of AI’s history and present, explaining concepts from neural networks to ChatGPT.",
+            "recommendation": "Recommended for all audiences as a national reference text on AI."
+          },
+          {
+            "title": "The Master Algorithm: How the Quest for the Ultimate Learning Machine Will Change Our World",
+            "author": "Pedro Domingos",
+            "year": 2015,
+            "language": "English",
+            "summary": "Introduces the five 'tribes' of machine learning and argues for a unifying algorithm. Explains AI’s broad methods for non-experts.",
+            "recommendation": "Useful bridge text between conceptual understanding and technical interest."
+          },
+          {
+            "title": "Artificial Intelligence: Structures and Strategies for Complex Problem Solving (6th ed.)",
+            "author": "George Luger",
+            "year": 2009,
+            "language": "English",
+            "summary": "Classic introductory AI textbook covering historical foundations and basic techniques, recommended by Norwegian AI faculty.",
+            "recommendation": "Good for self-learners seeking a textbook-style introduction without heavy math."
+          },
+          {
+            "title": "Human Compatible: Artificial Intelligence and the Problem of Control",
+            "author": "Stuart J. Russell",
+            "year": 2019,
+            "language": "English",
+            "summary": "A leading AI scientist discusses existential risks and proposes value-aligned AI systems for human–machine coexistence.",
+            "recommendation": "Essential for readers interested in AI ethics and governance."
+          }
+        ]
+      },
+      {
+        "education_level": "Undergraduate / Graduate",
+        "major_type": "Technical AI and Computer Science",
+        "readings": [
+          {
+            "title": "Deep Learning",
+            "author": "Ian Goodfellow, Yoshua Bengio, and Aaron Courville",
+            "year": 2015,
+            "language": "English",
+            "summary": "Comprehensive academic text introducing neural networks and deep learning foundations.",
+            "recommendation": "Standard graduate-level text for computer science and data science students."
+          },
+          {
+            "title": "Reinforcement Learning: An Introduction",
+            "author": "Richard S. Sutton and Andrew G. Barto",
+            "year": 2018,
+            "language": "English",
+            "summary": "Defines the core algorithms and theories behind reinforcement learning from classical to modern approaches.",
+            "recommendation": "Recommended for advanced students exploring machine learning and decision systems."
+          },
+          {
+            "title": "Intelligence Emerging: Adaptivity and Search in Evolving Neural Systems",
+            "author": "Keith Downing",
+            "year": 2015,
+            "language": "English",
+            "summary": "Explores biologically inspired neural computation, bridging AI and cognitive science.",
+            "recommendation": "Ideal for students interested in bio-inspired AI or neural network theory."
+          },
+          {
+            "title": "Gradient Expectations",
+            "author": "Keith Downing",
+            "year": 2023,
+            "language": "English",
+            "summary": "Maps the origins and anatomy of natural and artificial neural networks, integrating insights from neuroscience and AI.",
+            "recommendation": "A cross-disciplinary look at neural computation for advanced learners."
+          }
+        ]
+      },
+      {
+        "education_level": "Professional / Applied",
+        "major_type": "AI in Health and Society",
+        "readings": [
+          {
+            "title": "Kunstig intelligens redder liv – AI er legenes nye superkrefter",
+            "author": "Ishita Barua",
+            "year": 2023,
+            "language": "Norwegian",
+            "summary": "Explains how AI tools can improve healthcare delivery and clinical decision support, written by a physician-researcher.",
+            "recommendation": "Relevant for healthcare professionals, policymakers, and students in health informatics."
+          },
+          {
+            "title": "Artificial Intelligence Literacy in Higher Education: Theory and Practice from a European Perspective",
+            "author": "Imre Fekete",
+            "year": 2025,
+            "language": "English",
+            "summary": "Analyzes AI literacy frameworks and teaching practices across European higher education institutions.",
+            "recommendation": "Essential for university educators and AI policy developers."
+          }
+        ]
+      },
+      {
+        "education_level": "K–16 / Teacher Education",
+        "major_type": "AI in Education and Literacy Development",
+        "readings": [
+          {
+            "title": "Kunstig intelligens i skriveopplæringen",
+            "author": "Agnar Lirhus",
+            "year": 2024,
+            "language": "Norwegian",
+            "summary": "Explores how teachers can teach writing in the age of generative AI, offering theory and classroom strategies for KI-literacy.",
+            "recommendation": "Highly practical guide for teachers integrating AI tools responsibly in language education."
+          },
+          {
+            "title": "AI Literacy in K–16 Classrooms",
+            "author": "Davy Tsz Kit Ng, Samuel Kai Wah Chu, Maggie Shen Qiao, Maggie Jiahong Su, Jac Ka Lok Leung, and Iris Heung Yue Yim",
+            "year": 2022,
+            "language": "English",
+            "summary": "Provides research-based frameworks and design principles for teaching and learning AI at school levels K–16.",
+            "recommendation": "Crucial for educators developing AI curricula in schools and teacher training programs."
+          }
+        ]
+      }
+    ],
+    "tags": [
+      "AI_literacy",
+      "education_reading_list",
+      "GenAI_curriculum_support",
+      "teacher_professional_development"
+    ],
+    "intended_use": "curriculum_design_support_and_course_plan_revision",
+    "version": "2025-10",
+    "language": "en",
+    "embedding_model": "text-embedding-3-large"
+  }
+  
