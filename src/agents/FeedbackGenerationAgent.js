@@ -1,390 +1,365 @@
-const BaseAgent = require('./BaseAgent');
-
-/**
- * Feedback Generation Agent
- * Three submission types:
- * 1. NEW_SUBMISSION  → strict evaluation
- * 2. RESUBMISSION    → more supportive, improvement-based evaluation
- * 3. REFLECTION_ONLY → supportive reflection-focused evaluation
- */
+const BaseAgent = require("./BaseAgent");
+const fs = require("fs");
+const path = require("path");
 class FeedbackGenerationAgent extends BaseAgent {
   constructor(openaiClient) {
-    super('Feedback Generation Agent', openaiClient);
+    super("Feedback Generation Agent", openaiClient);
+    this.defaultSkillId = "research-programming-review";
   }
-
-  /**
-   * Get system prompt based on feedback mode
-   */
-  getSystemPrompt(feedbackMode = 'general') {
-    switch (feedbackMode.toLowerCase()) {
-      case 'fewshot':
-        return this.getFewShotSystemPrompt();
-      case 'rule-based':
-        return this.getRuleBasedSystemPrompt();
-      case 'revision':
-        return this.getRevisionSystemPrompt();
-      case 'framework':
-        return this.getFrameworkSystemPrompt();
-      case 'student-involving':
-        return this.getStudentInvolvingSystemPrompt();
-      default:
-        return this.getGeneralSystemPrompt();
-    }
-  }
-
-  /**
-   * General system prompt (original, for backward compatibility)
-   */
-  getGeneralSystemPrompt() {
+  getSystemPrompt() {
     return `
-You are an expert educational assessor specializing in formative, developmental assessment in project-based learning.
+<identity>
+You are a senior assessment specialist in project-based learning (PBL) with expertise in formative feedback, constructive alignment, and competency-based evaluation.
+</identity>
 
-Your evaluation tone and scoring STRICTNESS must differ based on submission type:
+<task>
+Analyze the student's submission against the provided evaluation criteria and learning objectives. Generate structured, evidence-based feedback with scores across four dimensions. Always reference specific parts of the submission to justify your assessment.
+</task>
 
-=====================================================================
-STRICTNESS MODES
-=====================================================================
+<evaluation_modes description="Select behavior based on the MODE tag in the user message">
+<mode name="NEW" trigger="First submission, no previous submission exists">
+- Tone: Direct, rigorous, critically honest. Do not sugarcoat weaknesses.
+- Focus: Evaluate strictly against criteria. Point out every gap and weakness.
+- Scoring: Apply rubric strictly. Score 3 = merely adequate. Reserve 4-5 only for genuinely strong or exceptional work.
+- Feedforward: Clear, specific demands for what must be improved.
+</mode>
 
-1) NEW_SUBMISSION (VERY STRICT MODE)
--------------------------------------
-Triggered when:
-- Student submits for the first time with no previous submissions.
+<mode name="RESUBMISSION" trigger="Revised submission with previous feedback available">
+- Tone: Firm but fair. Acknowledge only concrete improvements — no praising effort without results.
+- Focus: Compare current vs previous submission. Identify what actually improved and what was ignored.
+- Scoring: Only increase scores for clear, demonstrable improvement. Superficial changes = no score increase.
+- Feedforward: Focus on remaining weaknesses. Be blunt about what still falls short.
+- Compare against previous_feedback to assess whether the student genuinely acted on it or made cosmetic changes only.
+</mode>
 
-You must:
-- Use **higher expectations**, be more rigorous, more critical.
-- Point out weaknesses precisely and firmly (still professionally).
-- Demand clear justification and strong alignment with criteria.
-- Provide corrective feedforward.
-- Score task quality, reflection, and concept mastery using the **strictest standard**.
-- Critical thinking is NOT applicable.
+<mode name="REFLECTION" trigger="No new submission, only reflection answers provided">
+- Tone: Probing and challenging. Push deeper thinking.
+- Focus: Evaluate quality and depth of self-reflection critically.
+- Scoring: taskQualityScore = "not applicable". Score reflection and criticalThinking strictly — surface-level reflection should not exceed 2. Set conceptMasteryScore based on demonstrated understanding.
+- Feedforward: Challenge the student to go beyond superficial observations.
+</mode>
+</evaluation_modes>
 
-Use JSON:
+<feedback_modes description="Adjust feedback approach based on FEEDBACK_MODE tag in the user message">
+<mode name="general">
+Use evaluation criteria and learning objectives as primary reference. Consider reflection answers when available.
+</mode>
+<mode name="fewshot">
+Study the few_shot_examples carefully. Match the tone, depth, scoring pattern, and structure demonstrated. The examples represent the teacher's preferred style — emulate it closely.
+</mode>
+<mode name="rule-based">
+Follow the custom_instruction as your primary directive. It overrides default behavior for feedback content and tone. Still produce valid JSON with all required fields.
+</mode>
+<mode name="revision">
+You are revising existing feedback. Improve clarity, specificity, and actionability while maintaining original assessment intent.
+</mode>
+<mode name="framework">
+Apply a structured pedagogical framework (e.g., Bloom's Taxonomy, SOLO Taxonomy). Reference the framework explicitly in your feedback.
+</mode>
+<mode name="student-involving">
+Write feedback as a dialogue. Use questions to guide self-discovery. Example: "What do you think would happen if you approached X differently?"
+</mode>
+</feedback_modes>
+
+<skill_policy>
+When a <skill_pack> block is provided in the user context:
+- Treat it as domain-specific guidance that refines evaluation focus and evidence expectations.
+- Apply it only if it does not conflict with output JSON schema or critical rules.
+- If there is any conflict, keep <critical_rules>, schema, and scoring constraints as highest priority.
+</skill_policy>
+
+<persona_awareness>
+When a persona tag is provided: adopt that stakeholder's perspective, adjust vocabulary and focus areas to match their domain, and evaluate from their professional viewpoint (e.g., "marketing manager" focuses on communication clarity; "engineer" focuses on technical accuracy).
+When no persona is provided: use a neutral academic assessor perspective.
+</persona_awareness>
+
+<scoring_rubric scale="0-5">
+<dimension name="taskQualityScore" measures="How well the submission fulfills task requirements">
+0: Not submitted / completely off-topic | 1: Minimal attempt, major gaps | 2: Partially addresses task, significant weaknesses | 3: Adequate, meets basic requirements but lacks depth | 4: Strong, addresses all requirements with good depth | 5: Exceptional, exceeds expectations with mastery and originality | "not applicable": REFLECTION mode only
+</dimension>
+<dimension name="reflectionScore" measures="Quality of self-reflection">
+0: No reflection / completely superficial | 1: Surface-level, restates without analysis | 2: Some reflection, lacks depth | 3: Adequate, shows awareness with some reasoning | 4: Thoughtful, genuine self-awareness connected to learning | 5: Deep and insightful, questions assumptions and plans improvement
+</dimension>
+<dimension name="criticalthinkingScore" measures="Depth of analysis and reasoning">
+0: No evidence of critical thinking | 1: Describes without analysis | 2: Surface-level analysis | 3: Adequate, reasonable arguments with some evidence | 4: Strong, evaluates multiple perspectives with evidence | 5: Exceptional, synthesizes complex ideas and proposes novel insights
+</dimension>
+<dimension name="conceptMasteryScore" measures="Understanding of core concepts">
+0: No understanding | 1: Major misconceptions | 2: Partial understanding, some concepts confused | 3: Adequate, core concepts correct but basic application | 4: Strong, applies correctly and connects ideas | 5: Expert-level, deep understanding with transfer ability
+</dimension>
+</scoring_rubric>
+
+<output_specification>
+<fields>
+- feedback: Overall assessment (strengths first, then weaknesses). Cite specific submission evidence. 3-8 sentences.
+- feedforward: Concrete, actionable next steps. Imperative mood ("Expand on...", "Revise..."). 2-5 items, each specific enough to act on without clarification.
+- concept: Evaluate grasp of key concepts. Identify misconceptions with correct explanations. 2-4 sentences.
+- reflection: Assess self-reflection quality from reflection answers. If none provided, note this. 2-4 sentences.
+- criticalThinking: Evaluate depth of analysis and argumentation. Note if student went beyond description to analysis/synthesis. 2-4 sentences.
+</fields>
+<schema>
 {
-  "feedback": "",
-  "feedforward": "",
-  "concept": "",
-  "reflection": "",
-  "criticalThinking": "not applicable for new submission",
-  "taskQualityScore": 0,
-  "reflectionScore": 0,
-  "criticalthinkingScore": 0,
-  "conceptMasteryScore": 0
+  "feedback": "string",
+  "feedforward": "string",
+  "concept": "string",
+  "reflection": "string",
+  "criticalThinking": "string",
+  "taskQualityScore": "integer 0-5 or 'not applicable'",
+  "reflectionScore": "integer 0-5",
+  "criticalthinkingScore": "integer 0-5",
+  "conceptMasteryScore": "integer 0-5"
 }
+</schema>
+</output_specification>
 
-=====================================================================
+<constraints>
+<scoring_alignment>
+- Every score MUST be justified by its corresponding text field.
+- If feedback describes significant weaknesses, score MUST be 2 or lower — never 4 or 5.
+- Score 3 = "adequate" (bare minimum). Most average submissions = 2-3. Award 4 only for clearly strong work, 5 only for truly exceptional.
+- Always cite specific evidence from the submission. No vague claims like "good work" without specifying what was good.
+</scoring_alignment>
+<edge_cases>
+- Empty/near-empty submission (fewer than 20 words): taskQualityScore 0-1, guide student on how to start.
+- Off-topic: Note misalignment, score based on what was submitted, redirect in feedforward.
+- No evaluation criteria: Fall back to learning objectives, then general academic standards.
+- No reflection answers: reflectionScore = 0, note absence in reflection field.
+- Spam/gibberish: All scores = 0, note professionally.
+</edge_cases>
+</constraints>
 
-2) RESUBMISSION (SUPPORTIVE IMPROVEMENT MODE)
----------------------------------------------
-Triggered when:
-- Student submits again and a previousSubmission exists.
+<critical_rules>
+LANGUAGE: ALL text fields MUST be written in the SAME language as the student's submission. If Norwegian, write in Norwegian. If English, write in English. NEVER default to English. This is the highest-priority rule.
+FORMAT: Return valid JSON only. No markdown, no code fences, no extra text. All string fields must be non-empty. All scores must be integers 0-5 (except taskQualityScore which allows "not applicable" in REFLECTION mode).
+</critical_rules>`;
+  } // ==============================
+  // DETECT MODE
+  // ==============================
 
-You must:
-- Emphasize **progress, effort, and improvement**.
-- Tone should be **encouraging, appreciative**, and growth-focused.
-- Compare current and previous submission.
-- Reward improvement with slightly more lenient scoring.
-- Be gentler in critique but still constructive.
-- Provide motivational feedforward.
+  detectMode(request) {
+    const hasNew = request.submission && request.submission.trim();
+    const hasPrev =
+      request.previousSubmission && request.previousSubmission.trim();
 
-JSON:
-{
-  "feedback": "",
-  "feedforward": "",
-  "concept": "",
-  "reflection": "",
-  "criticalThinking": "",
-  "taskQualityScore": 0,
-  "reflectionScore": 0,
-  "criticalthinkingScore": 0,
-  "conceptMasteryScore": 0
-}
+    if (!hasNew && hasPrev) return "REFLECTION";
+    if (hasNew && hasPrev) return "RESUBMISSION";
+    return "NEW";
+  } // ==============================
+  // CONTEXT BUILDER (SMART FILTER)
+  // ==============================
 
-=====================================================================
-
-3) REFLECTION_ONLY (SUPPORTIVE REFLECTION MODE)
------------------------------------------------
-Triggered when:
-- No new submission, but previousSubmission exists
-- Student only provides reflection answers.
-
-You must:
-- Focus entirely on the student's reflection thinking.
-- Be **supportive, appreciative**, and highlight metacognitive growth.
-- Evaluate quality of reflection and critical thinking.
-- Task quality is NOT applicable (no new submission).
-- Encourage deeper reflection but in a gentle way.
-
-JSON:
-{
-  "feedback": "",
-  "feedforward": "",
-  "concept": "",
-  "reflection": "",
-  "criticalThinking": "",
-  "taskQualityScore": "not applicable",
-  "reflectionScore": 0,
-  "criticalthinkingScore": 0,
-  "conceptMasteryScore": 0
-}
-
-=====================================================================
-SCORING RUBRICS
-=====================================================================
-
-TASK QUALITY (0–5):
-0 = No understanding  
-1 = Minimal  
-2 = Basic  
-3 = Competent  
-4 = Strong  
-5 = Excellent  
-
-REFLECTION (0–5):
-0 = None  
-1 = Descriptive only  
-2 = Some analysis  
-3 = Insightful  
-4 = Adaptive and intentional  
-5 = Transformative  
-
-CRITICAL THINKING (0–5):
-1 = Mentions feedback only  
-2 = Basic understanding  
-3 = Partial application  
-4 = Strong application with reasoning  
-5 = Strategic improvement and critique  
-
-CONCEPT MASTERY (0–5):
-Evaluated based on extracted concept.
-
-=====================================================================
-IMPORTANT RULES
-=====================================================================
-- Output MUST be valid JSON only.
-- NO markdown. NO extra explanations.
-- NO plain text. NO "Star Score:" labels.
-- Return ONLY a JSON object starting with { and ending with }.
-- Always respond in the student's language.
-- Example of correct output:
-{
-  "feedback": "Your submission...",
-  "feedforward": "To improve...",
-  "concept": "The key concept is...",
-  "reflection": "Your reflection shows...",
-  "criticalThinking": "You demonstrate...",
-  "taskQualityScore": 4,
-  "reflectionScore": 3,
-  "criticalthinkingScore": 4,
-  "conceptMasteryScore": 5
-}
-`;
-  }
-
-  /**
-   * Build user message based on feedback mode
-   */
-  formatUserMessage(request) {
-    const { feedbackMode = 'general' } = request;
-    
-    switch (feedbackMode.toLowerCase()) {
-      case 'fewshot':
-        return this.formatFewShotMessage(request);
-      case 'rule-based':
-        return this.formatRuleBasedMessage(request);
-      case 'revision':
-        return this.formatRevisionMessage(request);
-      case 'framework':
-        return this.formatFrameworkMessage(request);
-      case 'student-involving':
-        return this.formatStudentInvolvingMessage(request);
-      default:
-        return this.formatGeneralMessage(request);
-    }
-  }
-
-  /**
-   * General user message format (original, for backward compatibility)
-   */
-  formatGeneralMessage(request) {
+  buildContext(request, mode) {
     const {
-      submission,
-      submissionAnswer,
-      feedbackReceivedAnswer,
-      previousSubmission,
-      previousFeedback,
-      submissionHistory,
-
-      evaluationCriteria,
-      learningObjectives,
-      persona,
-      attachments,
-      attachmentContent,
-      conversationLog,
-
-      // task parameters
-      id,
-      projectId,
       taskTitle,
       description,
+      submission,
+      previousSubmission,
+      submissionAnswer,
+      feedbackReceivedAnswer,
+      previousFeedback,
+      evaluationCriteria,
+      feedbackMode,
+      learningObjectives,
+      taskOutcome,
+      taskInstruction,
+      persona,
       keyword,
-      submissionDeadline,
-      enabledAIGuideline,
+      attachmentContent,
+      fewShotPrompt,
+      instruction,
+      enableSkill,
+      skillId,
       submissionQuestion,
       feedbackReceivedQuestion,
-
-      // few-shot learning
-      fewShotPrompt,
-      isLearnFromHuman
+      conversationLog,
+      submissionHistory,
     } = request;
 
-    let submissionType = "NEW_SUBMISSION";
+    const parts = []; // Layer 1: Routing — mode + feedback mode (LLM reads this first to select behavior)
 
-    const hasNewSubmission = submission && submission.trim().length > 0;
-    const hasPrevious = previousSubmission && previousSubmission.trim().length > 0;
+    parts.push(`<mode>${mode}</mode>`);
+    parts.push(`<feedback_mode>${feedbackMode || "general"}</feedback_mode>`); // Layer 2: Task context — what is being evaluated
 
-    // 3) REFLECTION_ONLY
-    if (!hasNewSubmission && hasPrevious) {
-      submissionType = "REFLECTION_ONLY";
-    }
-    // 2) RESUBMISSION
-    else if (hasNewSubmission && hasPrevious) {
-      submissionType = "RESUBMISSION";
-    }
-    // 1) else NEW_SUBMISSION (default)
-
-    let msg = `SUBMISSION TYPE: ${submissionType}\n\n`;
-
-    msg += `=== TASK INFORMATION ===\n`;
-    msg += `Task ID: ${id}\n`;
-    msg += `Project ID: ${projectId}\n`;
-    msg += `Title: ${taskTitle}\n`;
-    msg += `Description: ${description}\n`;
-    msg += `Keywords: ${keyword}\n`;
-    msg += `Submission Deadline: ${submissionDeadline}\n`;
-    msg += `AI Guidelines: ${enabledAIGuideline}\n\n`;
-
-    msg += `=== CURRENT SUBMISSION ===\n${submission || "No new submission"}\n\n`;
-    msg += `=== PREVIOUS SUBMISSION ===\n${previousSubmission || "None"}\n\n`;
-
-    msg += `=== SUBMISSION REFLECTION QUESTION ===\n${submissionQuestion}\n`;
-    msg += `=== STUDENT ANSWER ===\n${submissionAnswer || "No answer"}\n\n`;
-
-    msg += `=== FEEDBACK-RECEIVED REFLECTION QUESTION ===\n${feedbackReceivedQuestion}\n`;
-    msg += `=== STUDENT ANSWER ===\n${feedbackReceivedAnswer || "No answer"}\n\n`;
-
-    msg += `=== PREVIOUS FEEDBACK ===\n${previousFeedback || "None"}\n\n`;
-
-    if (evaluationCriteria) {
-      msg += `=== EVALUATION CRITERIA ===\n${evaluationCriteria}\n\n`;
-    }
+    let taskCtx = `<task_context>\n<title>${taskTitle}</title>`;
+    if (keyword) taskCtx += `\n<keyword>${keyword}</keyword>`;
+    taskCtx += `\n<description>${description}</description>`;
+    if (taskOutcome) taskCtx += `\n<outcome>${taskOutcome}</outcome>`;
+    if (taskInstruction) taskCtx += `\n<task_instruction>${taskInstruction}</task_instruction>`;
+    taskCtx += `\n</task_context>`;
+    parts.push(taskCtx); // Layer 3: Evaluation reference — criteria the LLM scores against
 
     if (learningObjectives) {
-      msg += `=== LEARNING OBJECTIVES ===\n${learningObjectives}\n\n`;
+      parts.push(
+        `<learning_objectives>\n${learningObjectives}\n</learning_objectives>`,
+      );
     }
+    if (evaluationCriteria) {
+      parts.push(
+        `<evaluation_criteria>\n${evaluationCriteria}\n</evaluation_criteria>`,
+      );
+    } // Layer 4: Persona — perspective to adopt
 
     if (persona) {
-      msg += `=== STAKEHOLDER PERSONA ===\n${persona}\n\n`;
+      parts.push(`<persona>${persona}</persona>`);
+    } // Layer 5: Student work — the content to evaluate (ordered: current → previous → history)
+
+    if (mode !== "REFLECTION") {
+      parts.push(`<submission>\n${submission || "None"}\n</submission>`);
     }
 
-    if (attachments && attachments.length > 0) {
-      msg += `=== ATTACHMENTS (filenames) ===\n${attachments.join(', ')}\n\n`;
-    }
-    if (attachmentContent && attachmentContent.trim()) {
-      msg += `=== ATTACHMENT CONTENT ===\n${attachmentContent}\n\n`;
+    if (mode !== "NEW") {
+      if (previousSubmission) {
+        parts.push(
+          `<previous_submission>\n${previousSubmission}\n</previous_submission>`,
+        );
+      }
+      if (previousFeedback) {
+        parts.push(
+          `<previous_feedback>\n${previousFeedback}\n</previous_feedback>`,
+        );
+      }
+    } // Reflection answers
+
+    if (submissionAnswer || feedbackReceivedAnswer) {
+      let reflectionParts = [];
+      if (submissionQuestion && submissionAnswer) {
+        reflectionParts.push(
+          `<question>${submissionQuestion}</question>\n<answer>${submissionAnswer}</answer>`,
+        );
+      } else if (submissionAnswer) {
+        reflectionParts.push(
+          `<submission_reflection>${submissionAnswer}</submission_reflection>`,
+        );
+      }
+      if (feedbackReceivedQuestion && feedbackReceivedAnswer) {
+        reflectionParts.push(
+          `<question>${feedbackReceivedQuestion}</question>\n<answer>${feedbackReceivedAnswer}</answer>`,
+        );
+      } else if (feedbackReceivedAnswer) {
+        reflectionParts.push(
+          `<feedback_reflection>${feedbackReceivedAnswer}</feedback_reflection>`,
+        );
+      }
+      parts.push(
+        `<reflection_answers>\n${reflectionParts.join("\n")}\n</reflection_answers>`,
+      );
+    } // Submission history (progression context)
+
+    if (submissionHistory && submissionHistory.length > 0) {
+      const historyLines = submissionHistory.slice(-3).map((entry) => {
+        const scores = [
+          entry.taskQualityScore != null
+            ? `task:${entry.taskQualityScore}`
+            : null,
+          entry.reflectionScore != null
+            ? `refl:${entry.reflectionScore}`
+            : null,
+          entry.criticalthinkingScore != null
+            ? `crit:${entry.criticalthinkingScore}`
+            : null,
+          entry.conceptMasteryScore != null
+            ? `concept:${entry.conceptMasteryScore}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        return `  <entry>${scores || "No scores"} — ${(entry.feedback || "").substring(0, 100)}</entry>`;
+      });
+      parts.push(
+        `<submission_history count="${historyLines.length}">\n${historyLines.join("\n")}\n</submission_history>`,
+      );
+    } // Layer 6: Supplementary context — attachments, conversation, examples, instructions
+
+    if (attachmentContent) {
+      const trimmed =
+        attachmentContent.length > 3000
+          ? attachmentContent.substring(0, 3000) + "\n... [content truncated]"
+          : attachmentContent;
+      parts.push(`<attachment_content>\n${trimmed}\n</attachment_content>`);
     }
 
     if (conversationLog) {
-      msg += `=== PREVIOUS AGENT CONVERSATION ===\n${conversationLog}\n\n`;
+      const trimmedLog =
+        conversationLog.length > 2000
+          ? conversationLog.substring(0, 2000) + "\n... [log truncated]"
+          : conversationLog;
+      parts.push(`<conversation_log>\n${trimmedLog}\n</conversation_log>`);
     }
 
-    // Add few-shot learning examples if provided (for "Learn from Human" mode)
-    if (isLearnFromHuman && fewShotPrompt) {
-      msg += fewShotPrompt;
+    if (fewShotPrompt) {
+      parts.push(`<few_shot_examples>\n${fewShotPrompt}\n</few_shot_examples>`);
     }
 
-    msg += `Generate JSON output according to SUBMISSION TYPE and STRICTNESS MODE.`;
+    if (instruction) {
+      parts.push(`<custom_instruction>\n${instruction}\n</custom_instruction>`);
+    }
 
-    return msg;
-  }
+    const skillPack = enableSkill
+      ? this.loadSkillPack(skillId || this.defaultSkillId)
+      : null;
+    if (skillPack) {
+      parts.push(
+        `<skill_pack id="${skillPack.id}" source="${skillPack.fileName}">\n${skillPack.content}\n</skill_pack>`,
+      );
+    } // Layer 7: Language enforcement (placed last — recency bias ensures highest attention)
 
-  /**
-   * Override process to use dynamic system prompt based on feedbackMode
-   */
+    const textSample =
+      submission || previousSubmission || submissionAnswer || "";
+    if (textSample && !/^[\x00-\x7F]*$/.test(textSample)) {
+      parts.push(
+        `<language_directive>The submission is NOT in English. Write ALL text fields in the EXACT SAME language as the submission.</language_directive>`,
+      );
+    } else if (textSample) {
+      const nonEnglishIndicators =
+        /\b(og|er|det|en|av|til|som|med|har|for|på|den|ikke|kan|vil|skal|var|fra|mer|ble|seg|alle|ved|dette|også|eller|blir|noen|mange|nå|etter|hvor|hele|andre|mest)\b/i;
+      if (nonEnglishIndicators.test(textSample)) {
+        parts.push(
+          `<language_directive>The submission is in Norwegian. Write ALL text fields in Norwegian.</language_directive>`,
+        );
+      }
+    } // Final instruction (last position = strongest signal)
+
+    parts.push(
+      `<instruction>Generate feedback for the above submission. Return valid JSON only. Match the submission's language in all text fields.</instruction>`,
+    );
+
+    return parts.join("\n\n");
+  } // ==============================
+  // MAIN PROCESS
+  // ==============================
+
   async process(request) {
     try {
-      const feedbackMode = request.feedbackMode || 'general';
-      const dynamicSystemPrompt = this.getSystemPrompt(feedbackMode);
-      const languageDirective = 'Response in the same language with the input text.';
-      const systemPrompt = `${dynamicSystemPrompt.trim()}\n\n${languageDirective}`;
+      const mode = this.detectMode(request);
+      const userMessage = this.buildContext(request, mode);
 
-      // Internal token estimator (heuristic)
-      const estimateTokens = (text) => {
-        if (!text) return 0;
-        const s = String(text);
-        const words = s.trim().length ? s.trim().split(/\s+/).length : 0;
-        const chars = s.length;
-        return Math.max(Math.round(words * 0.75), Math.round(chars / 4));
-      };
-
-      const userMessage = this.formatUserMessage(request);
-      const messages = [
-        {
-          role: "system",
-          content: systemPrompt
-        },
-        {
-          role: "user",
-          content: userMessage
-        }
-      ];
-
-      // Estimate prompt tokens from system + user messages
-      const estimatedPromptTokens = estimateTokens(messages.map(m => m.content).join('\n'));
-      
-      const apiStartTime = Date.now();
-      
-      // Add timeout protection for individual API calls
-      const response = await Promise.race([
-        this.openaiClient.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: messages,
-          temperature: 0.7,
-          max_tokens: this.getMaxTokens()
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error(`OpenAI API timeout after 120s in ${this.name}`)), 120000)
-        )
-      ]);
-      
-      const apiDuration = Date.now() - apiStartTime;
-      const outputText = response.choices[0].message.content;
-      const estimatedCompletionTokens = estimateTokens(outputText);
+      const response = await this.openaiClient.chat.completions.create({
+        model: "gpt-5.4-mini",
+        messages: [
+          { role: "system", content: this.systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        temperature: 0.3,
+        max_completion_tokens: this.getMaxTokens(),
+        response_format: { type: "json_object" },
+      });
 
       return {
         success: true,
         agent: this.name,
-        response: outputText,
+        response: response.choices[0].message.content,
         usage: response.usage,
-        usageInternal: {
-          promptTokens: estimatedPromptTokens,
-          completionTokens: estimatedCompletionTokens,
-          totalTokens: estimatedPromptTokens + estimatedCompletionTokens,
-          method: 'heuristic(words*0.75 vs chars/4)'
-        }
       };
     } catch (error) {
-      console.error(`❌ Error in ${this.name}:`, error.message);
       return {
         success: false,
         agent: this.name,
-        error: error.message
+        error: error.message,
       };
     }
-  }
+  } // ==============================
+  // VALIDATION
+  // ==============================
 
-  /**
-   * Minimal request validation.
-   */
   validateRequest(request) {
     return (
       request &&
@@ -393,660 +368,28 @@ IMPORTANT RULES
     );
   }
 
-  // ===================================================================
-  // FEW-SHOT LEARNING APPROACH
-  // ===================================================================
-
-  getFewShotSystemPrompt() {
-    return `
-You are an expert educational assessor specializing in formative, developmental assessment in project-based learning.
-
-Your task is to learn from the way submissions were judged and graded in the provided examples, then apply the same consistent evaluation approach to the current submission.
-
-=====================================================================
-YOUR APPROACH
-=====================================================================
-
-1. Study the provided few-shot examples carefully:
-   - Observe how submissions were evaluated and graded
-   - Note the style, tone, and depth of feedback
-   - Understand the scoring patterns and consistency
-   - Identify how evaluation criteria were applied
-
-2. Compare the current submission with the example submissions:
-   - Look for similarities in content, structure, and quality
-   - Identify how the current submission aligns with or differs from examples
-   - Apply the same evaluation standards demonstrated in examples
-
-3. Generate feedback in a consistent way:
-   - Match the style and tone of the example feedbacks
-   - Apply the same depth and detail level
-   - Use similar scoring patterns and justification
-   - Maintain consistency in how criteria are addressed
-
-=====================================================================
-SCORING RUBRICS
-=====================================================================
-
-TASK QUALITY (0–5):
-0 = No understanding  
-1 = Minimal  
-2 = Basic  
-3 = Competent  
-4 = Strong  
-5 = Excellent  
-
-REFLECTION (0–5):
-0 = None  
-1 = Descriptive only  
-2 = Some analysis  
-3 = Insightful  
-4 = Adaptive and intentional  
-5 = Transformative  
-
-CRITICAL THINKING (0–5):
-1 = Mentions feedback only  
-2 = Basic understanding  
-3 = Partial application  
-4 = Strong application with reasoning  
-5 = Strategic improvement and critique  
-
-CONCEPT MASTERY (0–5):
-Evaluated based on extracted concept.
-
-=====================================================================
-IMPORTANT RULES
-=====================================================================
-- Output MUST be valid JSON only.
-- NO markdown. NO extra explanations.
-- Return ONLY a JSON object starting with { and ending with }.
-- Always respond in the student's language.
-- Ensure your feedback style matches the examples provided.
-{
-  "feedback": "",
-  "feedforward": "",
-  "concept": "",
-  "reflection": "",
-  "criticalThinking": "",
-  "taskQualityScore": 0,
-  "reflectionScore": 0,
-  "criticalthinkingScore": 0,
-  "conceptMasteryScore": 0
-}
-`;
-  }
-
-  formatFewShotMessage(request) {
-    const {
-      submission,
-      evaluationCriteria,
-      attachments,
-      attachmentContent,
-      fewShotPrompt,
-      id,
-      projectId,
-      taskTitle,
-      description
-    } = request;
-
-    let msg = `FEEDBACK MODE: FEW-SHOT LEARNING\n\n`;
-
-    msg += `=== TASK INFORMATION ===\n`;
-    msg += `Task ID: ${id}\n`;
-    msg += `Project ID: ${projectId}\n`;
-    msg += `Title: ${taskTitle}\n`;
-    msg += `Description: ${description}\n\n`;
-
-    msg += `=== EVALUATION CRITERIA ===\n${evaluationCriteria || 'Not specified'}\n\n`;
-
-    msg += `=== CURRENT SUBMISSION ===\n${submission || "No submission"}\n\n`;
-
-    if (attachments && attachments.length > 0) {
-      msg += `=== ATTACHMENTS (filenames) ===\n${attachments.join(', ')}\n\n`;
-    }
-    if (attachmentContent && attachmentContent.trim()) {
-      msg += `=== ATTACHMENT CONTENT ===\n${attachmentContent}\n\n`;
-    }
-
-    if (fewShotPrompt) {
-      msg += fewShotPrompt;
-      msg += `\n\n`;
-    }
-
-    msg += `INSTRUCTIONS:\n`;
-    msg += `1. Study the example submissions and feedbacks above carefully.\n`;
-    msg += `2. Compare the current submission with the example submissions to understand quality levels.\n`;
-    msg += `3. Generate feedback in the same consistent style, tone, and approach as demonstrated in the examples.\n`;
-    msg += `4. Apply the same evaluation standards and scoring patterns shown in the examples.\n`;
-    msg += `5. Ensure your feedback matches the depth and detail level of the example feedbacks.\n\n`;
-
-    msg += `Generate JSON output according to the evaluation approach demonstrated in the examples.`;
-
-    return msg;
-  }
-
-  // ===================================================================
-  // RULE-BASED GRADING APPROACH
-  // ===================================================================
-
-  getRuleBasedSystemPrompt() {
-    return `
-You are an expert educational assessor specializing in formative, developmental assessment in project-based learning.
-
-Your task is to strictly follow the provided instructions to evaluate the submission against each evaluation criterion.
-
-=====================================================================
-YOUR APPROACH
-=====================================================================
-
-1. Read and understand the instructions carefully:
-   - Follow every requirement and guideline precisely
-   - Apply the instructions exactly as specified
-   - Do not deviate from the given instructions
-
-2. Evaluate against each criterion:
-   - Address each evaluation criterion systematically
-   - Apply the instructions to each criterion evaluation
-   - Provide specific feedback for each criterion
-
-3. Be strict and consistent:
-   - Apply the instructions uniformly across all criteria
-   - Maintain objectivity and fairness
-   - Ensure alignment with the specified instructions
-
-=====================================================================
-SCORING RUBRICS
-=====================================================================
-
-TASK QUALITY (0–5):
-0 = No understanding  
-1 = Minimal  
-2 = Basic  
-3 = Competent  
-4 = Strong  
-5 = Excellent  
-
-REFLECTION (0–5):
-0 = None  
-1 = Descriptive only  
-2 = Some analysis  
-3 = Insightful  
-4 = Adaptive and intentional  
-5 = Transformative  
-
-CRITICAL THINKING (0–5):
-1 = Mentions feedback only  
-2 = Basic understanding  
-3 = Partial application  
-4 = Strong application with reasoning  
-5 = Strategic improvement and critique  
-
-CONCEPT MASTERY (0–5):
-Evaluated based on extracted concept.
-
-=====================================================================
-IMPORTANT RULES
-=====================================================================
-- Output MUST be valid JSON only.
-- NO markdown. NO extra explanations.
-- Return ONLY a JSON object starting with { and ending with }.
-- Always respond in the student's language.
-- Strictly adhere to the provided instructions.
-{
-  "feedback": "",
-  "feedforward": "",
-  "concept": "",
-  "reflection": "",
-  "criticalThinking": "",
-  "taskQualityScore": 0,
-  "reflectionScore": 0,
-  "criticalthinkingScore": 0,
-  "conceptMasteryScore": 0
-}
-`;
-  }
-
-  formatRuleBasedMessage(request) {
-    const {
-      submission,
-      evaluationCriteria,
-      attachments,
-      attachmentContent,
-      instruction,
-      id,
-      projectId,
-      taskTitle,
-      description
-    } = request;
-
-    let msg = `FEEDBACK MODE: RULE-BASED GRADING\n\n`;
-
-    msg += `=== TASK INFORMATION ===\n`;
-    msg += `Task ID: ${id}\n`;
-    msg += `Project ID: ${projectId}\n`;
-    msg += `Title: ${taskTitle}\n`;
-    msg += `Description: ${description}\n\n`;
-
-    msg += `=== EVALUATION CRITERIA ===\n${evaluationCriteria || 'Not specified'}\n\n`;
-
-    if (instruction) {
-      msg += `=== INSTRUCTIONS ===\n${instruction}\n\n`;
-    }
-
-    msg += `=== CURRENT SUBMISSION ===\n${submission || "No submission"}\n\n`;
-
-    if (attachments && attachments.length > 0) {
-      msg += `=== ATTACHMENTS (filenames) ===\n${attachments.join(', ')}\n\n`;
-    }
-    if (attachmentContent && attachmentContent.trim()) {
-      msg += `=== ATTACHMENT CONTENT ===\n${attachmentContent}\n\n`;
-    }
-
-    msg += `INSTRUCTIONS:\n`;
-    msg += `1. Strictly follow the instructions provided above.\n`;
-    msg += `2. Evaluate the submission against each evaluation criterion systematically.\n`;
-    msg += `3. Apply the instructions precisely to each criterion evaluation.\n`;
-    msg += `4. Provide specific feedback addressing how each criterion was met or not met according to the instructions.\n`;
-    msg += `5. Ensure your evaluation is consistent with the provided instructions.\n\n`;
-
-    msg += `Generate JSON output strictly following the provided instructions.`;
-
-    return msg;
-  }
-
-  // ===================================================================
-  // REVISION CHECKING APPROACH
-  // ===================================================================
-
-  getRevisionSystemPrompt() {
-    return `
-You are an expert educational assessor specializing in formative, developmental assessment in project-based learning.
-
-Your task is to compare the current submission with the previous submission, identify changes, evaluate those changes, and revise or extend the previous feedback rather than creating entirely new feedback.
-
-=====================================================================
-YOUR APPROACH
-=====================================================================
-
-1. Compare current vs previous submission:
-   - Identify what has changed, improved, or been revised
-   - Note what remains the same
-   - Highlight new additions or modifications
-
-2. Evaluate the changes:
-   - Assess whether changes address previous feedback
-   - Determine if changes show improvement or require further work
-   - Evaluate if the changes align with evaluation criteria
-
-3. Revise or extend previous feedback:
-   - Build upon the previous feedback, don't repeat it
-   - Acknowledge improvements that address previous concerns
-   - Update or extend guidance based on current submission state
-   - Do NOT create entirely new feedback—revise the existing one
-
-=====================================================================
-SCORING RUBRICS
-=====================================================================
-
-TASK QUALITY (0–5):
-0 = No understanding  
-1 = Minimal  
-2 = Basic  
-3 = Competent  
-4 = Strong  
-5 = Excellent  
-
-REFLECTION (0–5):
-0 = None  
-1 = Descriptive only  
-2 = Some analysis  
-3 = Insightful  
-4 = Adaptive and intentional  
-5 = Transformative  
-
-CRITICAL THINKING (0–5):
-1 = Mentions feedback only  
-2 = Basic understanding  
-3 = Partial application  
-4 = Strong application with reasoning  
-5 = Strategic improvement and critique  
-
-CONCEPT MASTERY (0–5):
-Evaluated based on extracted concept.
-
-=====================================================================
-IMPORTANT RULES
-=====================================================================
-- Output MUST be valid JSON only.
-- NO markdown. NO extra explanations.
-- Return ONLY a JSON object starting with { and ending with }.
-- Always respond in the student's language.
-- Revise or extend previous feedback, don't create new feedback from scratch.
-{
-  "feedback": "",
-  "feedforward": "",
-  "concept": "",
-  "reflection": "",
-  "criticalThinking": "",
-  "taskQualityScore": 0,
-  "reflectionScore": 0,
-  "criticalthinkingScore": 0,
-  "conceptMasteryScore": 0
-}
-`;
-  }
-
-  formatRevisionMessage(request) {
-    const {
-      submission,
-      previousSubmission,
-      previousFeedback,
-      evaluationCriteria,
-      attachments,
-      attachmentContent,
-      id,
-      projectId,
-      taskTitle,
-      description
-    } = request;
-
-    let msg = `FEEDBACK MODE: REVISION CHECKING\n\n`;
-
-    msg += `=== TASK INFORMATION ===\n`;
-    msg += `Task ID: ${id}\n`;
-    msg += `Project ID: ${projectId}\n`;
-    msg += `Title: ${taskTitle}\n`;
-    msg += `Description: ${description}\n\n`;
-
-    msg += `=== EVALUATION CRITERIA ===\n${evaluationCriteria || 'Not specified'}\n\n`;
-
-    msg += `=== CURRENT SUBMISSION ===\n${submission || "No submission"}\n\n`;
-    msg += `=== PREVIOUS SUBMISSION ===\n${previousSubmission || "None"}\n\n`;
-    msg += `=== PREVIOUS FEEDBACK ===\n${previousFeedback || "None"}\n\n`;
-
-    if (attachments && attachments.length > 0) {
-      msg += `=== ATTACHMENTS (filenames) ===\n${attachments.join(', ')}\n\n`;
-    }
-    if (attachmentContent && attachmentContent.trim()) {
-      msg += `=== ATTACHMENT CONTENT ===\n${attachmentContent}\n\n`;
-    }
-
-    msg += `INSTRUCTIONS:\n`;
-    msg += `1. Carefully compare the current submission with the previous submission to identify changes, improvements, or revisions.\n`;
-    msg += `2. Evaluate whether the changes address issues or concerns raised in the previous feedback.\n`;
-    msg += `3. Revise or extend the previous feedback rather than creating entirely new feedback. Acknowledge improvements and provide updated guidance.\n`;
-    msg += `4. Reference specific changes between submissions and explain how they relate to the previous feedback.\n`;
-    msg += `5. Ensure your feedback builds upon the previous feedback and shows continuity in the evaluation process.\n\n`;
-
-    msg += `Generate JSON output that revises or extends the previous feedback based on the changes identified.`;
-
-    return msg;
-  }
-
-  // ===================================================================
-  // FRAMEWORK ALIGNING APPROACH
-  // ===================================================================
-
-  getFrameworkSystemPrompt() {
-    return `
-You are an expert educational assessor specializing in formative, developmental assessment in project-based learning.
-
-Your task is to use the provided evaluation framework to judge each evaluation criterion, provide comments, and assign grades.
-
-=====================================================================
-EVALUATION FRAMEWORK
-=====================================================================
-
-When evaluating the student answer, apply the following levels:
-
-**Level 1 — Unsatisfactory**
-- Completely Out of Topic: student writes unrelated content or asks unrelated questions
-- Overly Lengthy and Off-Topic: excessive or irrelevant information, not aligned with requirements
-- Fails to meet exercise expectations or ignores instructions
-
-**Level 2 — Needs Improvement**
-- Partial Answer: covers only some required elements
-- General and Superficial Answer: vague, generic, or lacks relevance to the project
-- Misunderstanding the Question: provides theory instead of project-specific content
-- Incorrect or Illogical Points: contradicts project constraints or includes unrealistic statements
-
-**Level 3 — Satisfactory**
-- Incomplete but Structured: organized and effort visible but missing minor details
-- Excellent but Slightly Unbalanced: strong but uneven across sections
-
-**Level 4 — Excellence**
-- Fully addresses all required elements
-- Clear, relevant, detailed, and fully aligned with project context and task requirements
-
-**IMPORTANT FRAMEWORK RULE:**
-If the student addresses all required points (e.g., all SWOT points or all project charter components), they should receive Level 3 at minimum, unless the content is incorrect, irrelevant, or contradictory.
-
-=====================================================================
-SCORING RUBRICS
-=====================================================================
-
-TASK QUALITY (0–5):
-Map framework levels to scores:
-- Level 1 (Unsatisfactory) = 0-1
-- Level 2 (Needs Improvement) = 2
-- Level 3 (Satisfactory) = 3
-- Level 4 (Excellence) = 4-5
-
-REFLECTION (0–5):
-0 = None  
-1 = Descriptive only  
-2 = Some analysis  
-3 = Insightful  
-4 = Adaptive and intentional  
-5 = Transformative  
-
-CRITICAL THINKING (0–5):
-1 = Mentions feedback only  
-2 = Basic understanding  
-3 = Partial application  
-4 = Strong application with reasoning  
-5 = Strategic improvement and critique  
-
-CONCEPT MASTERY (0–5):
-Evaluated based on extracted concept.
-
-=====================================================================
-IMPORTANT RULES
-=====================================================================
-- Output MUST be valid JSON only.
-- NO markdown. NO extra explanations.
-- Return ONLY a JSON object starting with { and ending with }.
-- Always respond in the student's language.
-- Apply the evaluation framework systematically to each criterion.
-- Clearly indicate which framework level applies and why.
-{
-  "feedback": "",
-  "feedforward": "",
-  "concept": "",
-  "reflection": "",
-  "criticalThinking": "",
-  "taskQualityScore": 0,
-  "reflectionScore": 0,
-  "criticalthinkingScore": 0,
-  "conceptMasteryScore": 0
-}
-`;
-  }
-
-  formatFrameworkMessage(request) {
-    const {
-      submission,
-      evaluationCriteria,
-      attachments,
-      attachmentContent,
-      id,
-      projectId,
-      taskTitle,
-      description
-    } = request;
-
-    let msg = `FEEDBACK MODE: FRAMEWORK ALIGNING\n\n`;
-
-    msg += `=== TASK INFORMATION ===\n`;
-    msg += `Task ID: ${id}\n`;
-    msg += `Project ID: ${projectId}\n`;
-    msg += `Title: ${taskTitle}\n`;
-    msg += `Description: ${description}\n\n`;
-
-    msg += `=== EVALUATION CRITERIA ===\n${evaluationCriteria || 'Not specified'}\n\n`;
-
-    msg += `=== CURRENT SUBMISSION ===\n${submission || "No submission"}\n\n`;
-
-    if (attachments && attachments.length > 0) {
-      msg += `=== ATTACHMENTS (filenames) ===\n${attachments.join(', ')}\n\n`;
-    }
-    if (attachmentContent && attachmentContent.trim()) {
-      msg += `=== ATTACHMENT CONTENT ===\n${attachmentContent}\n\n`;
-    }
-
-    msg += `INSTRUCTIONS:\n`;
-    msg += `1. Use the evaluation framework provided in the system prompt to judge each evaluation criterion.\n`;
-    msg += `2. Determine which framework level (Level 1, 2, 3, or 4) applies to the submission for each criterion.\n`;
-    msg += `3. Provide clear justification for the framework level assigned, referencing specific aspects of the submission.\n`;
-    msg += `4. Remember: If the student addresses all required points, they should receive Level 3 at minimum, unless content is incorrect, irrelevant, or contradictory.\n`;
-    msg += `5. Generate feedback and scores that align with the framework level identified.\n\n`;
-
-    msg += `Generate JSON output that applies the evaluation framework systematically to each criterion.`;
-
-    return msg;
-  }
-
-  // ===================================================================
-  // STUDENT INVOLVING APPROACH
-  // ===================================================================
-
-  getStudentInvolvingSystemPrompt() {
-    return `
-You are an expert educational assessor specializing in formative, developmental assessment in project-based learning.
-
-Your task is to use the student's input from the conversation log to re-examine the last feedback and last submission, then regrade and provide new feedback that addresses the student's concerns and questions.
-
-=====================================================================
-YOUR APPROACH
-=====================================================================
-
-1. Review the conversation log carefully:
-   - Understand the student's questions, concerns, or clarifications
-   - Identify areas where the student seeks further explanation
-   - Note any misunderstandings or points that need addressing
-
-2. Re-examine the last feedback and submission:
-   - Look at the previous feedback with fresh perspective
-   - Re-evaluate the previous submission considering the student's input
-   - Identify areas where the feedback may need clarification or adjustment
-
-3. Regrade and provide new feedback:
-   - Address the specific content raised in the conversation log
-   - Clarify any misunderstandings from previous feedback
-   - Provide updated evaluation based on the student's input
-   - Ensure the new feedback directly responds to the student's questions or concerns
-
-=====================================================================
-SCORING RUBRICS
-=====================================================================
-
-TASK QUALITY (0–5):
-0 = No understanding  
-1 = Minimal  
-2 = Basic  
-3 = Competent  
-4 = Strong  
-5 = Excellent  
-
-REFLECTION (0–5):
-0 = None  
-1 = Descriptive only  
-2 = Some analysis  
-3 = Insightful  
-4 = Adaptive and intentional  
-5 = Transformative  
-
-CRITICAL THINKING (0–5):
-1 = Mentions feedback only  
-2 = Basic understanding  
-3 = Partial application  
-4 = Strong application with reasoning  
-5 = Strategic improvement and critique  
-
-CONCEPT MASTERY (0–5):
-Evaluated based on extracted concept.
-
-=====================================================================
-IMPORTANT RULES
-=====================================================================
-- Output MUST be valid JSON only.
-- NO markdown. NO extra explanations.
-- Return ONLY a JSON object starting with { and ending with }.
-- Always respond in the student's language.
-- Address the student's input from the conversation log directly.
-{
-  "feedback": "",
-  "feedforward": "",
-  "concept": "",
-  "reflection": "",
-  "criticalThinking": "",
-  "taskQualityScore": 0,
-  "reflectionScore": 0,
-  "criticalthinkingScore": 0,
-  "conceptMasteryScore": 0
-}
-`;
-  }
-
-  formatStudentInvolvingMessage(request) {
-    const {
-      submission,
-      previousSubmission,
-      previousFeedback,
-      conversationLog,
-      evaluationCriteria,
-      attachments,
-      attachmentContent,
-      id,
-      projectId,
-      taskTitle,
-      description
-    } = request;
-
-    let msg = `FEEDBACK MODE: STUDENT INVOLVING\n\n`;
-
-    msg += `=== TASK INFORMATION ===\n`;
-    msg += `Task ID: ${id}\n`;
-    msg += `Project ID: ${projectId}\n`;
-    msg += `Title: ${taskTitle}\n`;
-    msg += `Description: ${description}\n\n`;
-
-    msg += `=== EVALUATION CRITERIA ===\n${evaluationCriteria || 'Not specified'}\n\n`;
-
-    msg += `=== PREVIOUS SUBMISSION ===\n${previousSubmission || "None"}\n\n`;
-    msg += `=== PREVIOUS FEEDBACK ===\n${previousFeedback || "None"}\n\n`;
-
-    if (conversationLog) {
-      msg += `=== STUDENT CONVERSATION LOG ===\n${conversationLog}\n\n`;
-    }
-
-    if (attachments && attachments.length > 0) {
-      msg += `=== ATTACHMENTS (filenames) ===\n${attachments.join(', ')}\n\n`;
-    }
-    if (attachmentContent && attachmentContent.trim()) {
-      msg += `=== ATTACHMENT CONTENT ===\n${attachmentContent}\n\n`;
-    }
-
-    msg += `INSTRUCTIONS:\n`;
-    msg += `1. Carefully review the student's input in the conversation log to understand their questions, concerns, or clarifications.\n`;
-    msg += `2. Re-examine the previous submission and previous feedback with the student's perspective in mind.\n`;
-    msg += `3. Regrade and provide new feedback that directly addresses the content in the conversation log.\n`;
-    msg += `4. Clarify any misunderstandings, answer questions, and provide updated evaluation based on the student's input.\n`;
-    msg += `5. Ensure your feedback responds to the specific points raised by the student in the conversation.\n\n`;
-
-    msg += `Generate JSON output that addresses the student's input from the conversation log and provides updated feedback.`;
-
-    return msg;
+  loadSkillPack(skillId) {
+    if (!skillId || typeof skillId !== "string") return null;
+
+    const normalizedId = skillId.trim().toLowerCase();
+    if (!normalizedId) return null;
+    if (!/^[a-z0-9-]+$/.test(normalizedId)) return null;
+
+    const skillsDir = path.join(__dirname, "skills");
+    const fileName = `${normalizedId}.skill.md`;
+    const filePath = path.join(skillsDir, fileName);
+
+    if (!filePath.startsWith(skillsDir)) return null;
+    if (!fs.existsSync(filePath)) return null;
+
+    const raw = fs.readFileSync(filePath, "utf8").trim();
+    if (!raw) return null;
+
+    return {
+      id: normalizedId,
+      fileName,
+      content: raw,
+    };
   }
 }
 

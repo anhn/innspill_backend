@@ -50,29 +50,32 @@ The application uses a multi-agent architecture with specialized agents:
 
 1. Clone the repository
 2. Install dependencies:
+
    ```bash
    npm install
    ```
 
 3. Create a `.env` file based on `env.example`:
+
    ```bash
    cp env.example .env
    ```
 
 4. Add your configuration to the `.env` file:
+
    ```
    SESSION_SECRET=your_session_secret_here
    NODE_ENV=development
-   
+
    FACEBOOK_APP_ID=your_facebook_app_id
    FACEBOOK_APP_SECRET=your_facebook_app_secret
-   
+
    GOOGLE_CLIENT_ID=your_google_client_id
    GOOGLE_CLIENT_SECRET=your_google_client_secret
-   
+
    CLIENT_URL=http://localhost:3001
    SERVER_URL=http://localhost:3000
-   
+
    MONGO_URI=your_mongodb_connection_string
    OPENAI_API_KEY=your_openai_api_key_here
    PORT=3000
@@ -81,6 +84,7 @@ The application uses a multi-agent architecture with specialized agents:
 ## Usage
 
 1. Start the development server:
+
    ```bash
    npm run dev
    ```
@@ -113,18 +117,21 @@ All chatbot endpoints expect a JSON payload with the following structure:
 Different endpoints support different context options:
 
 #### Course Plan Context
+
 - `courseType`: "academic", "professional", "workshop", "online", "blended"
 - `duration`: Course duration
 - `level`: Student level
 - `subject`: Subject area
 
 #### Lecture Plan Context
+
 - `lectureDuration`: Duration in minutes (15-180)
 - `topic`: Lecture topic
 - `classSize`: Number of students
 - `environment`: "in-person", "online", "hybrid"
 
 #### Feedback Analysis Context
+
 - `feedbackType`: "student", "peer", "self", "administrative", "mixed"
 - `courseId`: Course identifier
 - `instructorId`: Instructor identifier
@@ -168,6 +175,7 @@ The API includes comprehensive error handling:
 ## Environment Variables
 
 ### Required Variables
+
 - `SESSION_SECRET`: Secret key for session management
 - `FACEBOOK_APP_ID`: Facebook App ID for authentication
 - `FACEBOOK_APP_SECRET`: Facebook App Secret
@@ -179,6 +187,7 @@ The API includes comprehensive error handling:
 - `OPENAI_API_KEY`: Your OpenAI API key
 
 ### Optional Variables
+
 - `PORT`: Server port (default: 3000)
 - `NODE_ENV`: Environment (development/production)
 - `RATE_LIMIT_WINDOW_MS`: Rate limit window (default: 15 minutes)
@@ -187,6 +196,7 @@ The API includes comprehensive error handling:
 ## Development
 
 The project uses:
+
 - Express.js for the web framework
 - OpenAI SDK for AI integration
 - Passport.js for social authentication
@@ -202,6 +212,7 @@ The project uses:
 ### Prerequisites
 
 Before deploying, ensure you have:
+
 - Node.js 16.x or higher installed on your server
 - MongoDB database (local or cloud like MongoDB Atlas)
 - OpenAI API key
@@ -211,35 +222,37 @@ Before deploying, ensure you have:
 ### Environment Setup for Production
 
 1. **Set NODE_ENV to production:**
+
    ```bash
    export NODE_ENV=production
    ```
 
 2. **Configure environment variables:**
    Create a `.env` file with production values:
+
    ```
    NODE_ENV=production
    PORT=3000
-   
+
    # Session
    SESSION_SECRET=your_strong_session_secret_here
-   
+
    # Database
    MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/ai4edu_database?retryWrites=true&w=majority
-   
+
    # OpenAI
    OPENAI_API_KEY=sk-your-openai-api-key-here
-   
+
    # URLs
    CLIENT_URL=https://your-frontend-domain.com
    SERVER_URL=https://your-backend-domain.com
-   
+
    # Social Authentication (optional)
    FACEBOOK_APP_ID=your_facebook_app_id
    FACEBOOK_APP_SECRET=your_facebook_app_secret
    GOOGLE_CLIENT_ID=your_google_client_id
    GOOGLE_CLIENT_SECRET=your_google_client_secret
-   
+
    # Rate Limiting
    RATE_LIMIT_WINDOW_MS=900000
    RATE_LIMIT_MAX_REQUESTS=100
@@ -250,21 +263,25 @@ Before deploying, ensure you have:
 #### Option 1: Deploy to Heroku
 
 1. **Install Heroku CLI:**
+
    ```bash
    npm install -g heroku
    ```
 
 2. **Login to Heroku:**
+
    ```bash
    heroku login
    ```
 
 3. **Create a new Heroku app:**
+
    ```bash
    heroku create your-app-name
    ```
 
 4. **Set environment variables:**
+
    ```bash
    heroku config:set NODE_ENV=production
    heroku config:set SESSION_SECRET=your_strong_secret
@@ -275,6 +292,7 @@ Before deploying, ensure you have:
    ```
 
 5. **Deploy:**
+
    ```bash
    git push heroku main
    ```
@@ -289,28 +307,33 @@ Before deploying, ensure you have:
 1. **Launch an EC2 instance** (Ubuntu 20.04 or later)
 
 2. **Connect to your instance:**
+
    ```bash
    ssh -i your-key.pem ubuntu@your-ec2-ip
    ```
 
 3. **Install Node.js:**
+
    ```bash
    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
    sudo apt-get install -y nodejs
    ```
 
 4. **Install PM2 (Process Manager):**
+
    ```bash
    sudo npm install -g pm2
    ```
 
 5. **Clone your repository:**
+
    ```bash
    git clone https://github.com/your-username/AI4EDU_BE.git
    cd AI4EDU_BE
    ```
 
 6. **Install dependencies:**
+
    ```bash
    npm install --production
    ```
@@ -318,6 +341,7 @@ Before deploying, ensure you have:
 7. **Create .env file with production values**
 
 8. **Start the application with PM2:**
+
    ```bash
    pm2 start scripts/start.js --name ai4edu-backend
    pm2 save
@@ -325,12 +349,14 @@ Before deploying, ensure you have:
    ```
 
 9. **Configure Nginx as reverse proxy (optional):**
+
    ```bash
    sudo apt-get install nginx
    sudo nano /etc/nginx/sites-available/ai4edu
    ```
-   
+
    Add this configuration:
+
    ```nginx
    server {
        listen 80;
@@ -346,8 +372,9 @@ Before deploying, ensure you have:
        }
    }
    ```
-   
+
    Enable the site:
+
    ```bash
    sudo ln -s /etc/nginx/sites-available/ai4edu /etc/nginx/sites-enabled/
    sudo nginx -t
@@ -395,6 +422,7 @@ Before deploying, ensure you have:
 cPanel hosting with Node.js support allows you to deploy your application using the Setup Node.js App feature available in most shared hosting environments including Namecheap.
 
 **Prerequisites:**
+
 - Namecheap shared hosting with cPanel and Node.js support
 - SSH access enabled (recommended)
 - Node.js version 16.x or higher available in cPanel
@@ -404,6 +432,7 @@ cPanel hosting with Node.js support allows you to deploy your application using 
 1. **Prepare your application for production:**
 
    Add the following to your `package.json` if not already present:
+
    ```json
    {
      "engines": {
@@ -414,7 +443,6 @@ cPanel hosting with Node.js support allows you to deploy your application using 
    ```
 
 2. **Upload your files via cPanel File Manager or FTP:**
-
    - Login to cPanel
    - Navigate to File Manager
    - Go to your domain's directory (usually `public_html/your-domain.com` or create a subdirectory)
@@ -422,25 +450,25 @@ cPanel hosting with Node.js support allows you to deploy your application using 
      - `node_modules/` (will be installed on server)
      - `.env` (create separately on server)
      - `.git/` (optional, unless using Git deployment)
-   
+
    **Alternative - Upload via SSH (recommended):**
+
    ```bash
    # Connect to your server via SSH
    ssh username@your-domain.com
-   
+
    # Navigate to your application directory
    cd domains/your-domain.com
-   
+
    # Clone your repository (if using Git)
    git clone https://github.com/your-username/AI4EDU_BE.git
    cd AI4EDU_BE
-   
+
    # Or upload via rsync
    rsync -avz --exclude 'node_modules' --exclude '.env' ./ username@your-domain.com:~/domains/your-domain.com/
    ```
 
 3. **Setup Node.js Application in cPanel:**
-
    - Login to cPanel
    - Search for "Setup Node.js App" (usually under "Software" section)
    - Click "Create Application"
@@ -456,11 +484,11 @@ cPanel hosting with Node.js support allows you to deploy your application using 
 4. **Install dependencies:**
 
    After creating the application, cPanel will show you commands to run. You need to enter the virtual environment:
-   
+
    ```bash
    # Via cPanel Terminal or SSH
    source /home/username/nodevenv/domains/your-domain.com/AI4EDU_BE/16/bin/activate
-   
+
    # Install production dependencies
    cd ~/domains/your-domain.com/AI4EDU_BE
    npm install --production
@@ -469,37 +497,38 @@ cPanel hosting with Node.js support allows you to deploy your application using 
 5. **Create and configure .env file:**
 
    Using cPanel File Manager or SSH, create a `.env` file in your application root:
-   
+
    ```bash
    # Via SSH
    cd ~/domains/your-domain.com/AI4EDU_BE
    nano .env
    ```
-   
+
    Add your production environment variables:
+
    ```
    NODE_ENV=production
    PORT=3000
-   
+
    # Session
    SESSION_SECRET=your_strong_session_secret_here
-   
+
    # Database
    MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/ai4edu_database
-   
+
    # OpenAI
    OPENAI_API_KEY=sk-your-openai-api-key-here
-   
+
    # URLs - Update these to match your domain
    CLIENT_URL=https://your-frontend-domain.com
    SERVER_URL=https://api.your-domain.com
-   
+
    # Social Authentication
    FACEBOOK_APP_ID=your_facebook_app_id
    FACEBOOK_APP_SECRET=your_facebook_app_secret
    GOOGLE_CLIENT_ID=your_google_client_id
    GOOGLE_CLIENT_SECRET=your_google_client_secret
-   
+
    # Rate Limiting
    RATE_LIMIT_WINDOW_MS=900000
    RATE_LIMIT_MAX_REQUESTS=100
@@ -514,7 +543,6 @@ cPanel hosting with Node.js support allows you to deploy your application using 
    - Add each variable (e.g., `NODE_ENV=production`)
 
 7. **Setup SSL Certificate (Important):**
-
    - In cPanel, go to "SSL/TLS Status"
    - Enable SSL for your domain (Namecheap provides free Let's Encrypt SSL)
    - Or use "AutoSSL" to automatically secure your domain
@@ -523,15 +551,14 @@ cPanel hosting with Node.js support allows you to deploy your application using 
 8. **Configure OAuth Redirect URLs:**
 
    Update your OAuth app settings:
-   
+
    **Facebook:**
    - Valid OAuth Redirect URIs: `https://api.your-domain.com/api/v1/auth/facebook/callback`
-   
+
    **Google:**
    - Authorized redirect URIs: `https://api.your-domain.com/api/v1/auth/google/callback`
 
 9. **Start/Restart the application:**
-
    - In cPanel "Setup Node.js App", click "Restart" button
    - Or via SSH:
      ```bash
@@ -540,7 +567,6 @@ cPanel hosting with Node.js support allows you to deploy your application using 
      ```
 
 10. **Setup subdomain for API (Optional but recommended):**
-
     - In cPanel, go to "Subdomains"
     - Create a subdomain: `api.your-domain.com`
     - Point document root to your Node.js application directory
@@ -549,13 +575,14 @@ cPanel hosting with Node.js support allows you to deploy your application using 
 11. **Configure .htaccess (if needed):**
 
     Create/edit `.htaccess` in your application root for proper routing:
+
     ```apache
     # Enable Passenger
     PassengerEnabled On
     PassengerAppRoot /home/username/domains/your-domain.com/AI4EDU_BE
     PassengerAppType node
     PassengerStartupFile scripts/start.js
-    
+
     # Force HTTPS
     RewriteEngine On
     RewriteCond %{HTTPS} off
@@ -620,6 +647,7 @@ touch tmp/restart.txt
 ```
 
 **Performance Tips for cPanel:**
+
 - Use MongoDB Atlas instead of local MongoDB
 - Enable caching where possible
 - Optimize images and static assets
@@ -650,6 +678,7 @@ touch tmp/restart.txt
 #### Option 2: Self-Hosted MongoDB
 
 1. **Install MongoDB on your server:**
+
    ```bash
    sudo apt-get install -y mongodb-org
    sudo systemctl start mongod
@@ -657,6 +686,7 @@ touch tmp/restart.txt
    ```
 
 2. **Configure authentication:**
+
    ```bash
    mongo
    use admin
@@ -699,16 +729,19 @@ npm run seed:users
 ### Post-Deployment Checks
 
 1. **Test health endpoint:**
+
    ```bash
    curl https://your-domain.com/health
    ```
 
 2. **Test database connection:**
+
    ```bash
    curl https://your-domain.com/api/v1/chatbot/health
    ```
 
 3. **Test authentication:**
+
    ```bash
    curl -X POST https://your-domain.com/api/v1/auth/login \
      -H "Content-Type: application/json" \
@@ -732,14 +765,15 @@ npm run seed:users
    - Configure error tracking (e.g., Sentry, LogRocket)
 
 2. **Regular maintenance:**
+
    ```bash
    # Update dependencies
    npm update
    npm audit fix
-   
+
    # Restart application
    pm2 restart ai4edu-backend
-   
+
    # Check application status
    pm2 status
    ```
@@ -759,21 +793,25 @@ npm run seed:users
 ### Troubleshooting
 
 **Application won't start:**
+
 - Check logs for error messages
 - Verify all environment variables are set
 - Test MongoDB connection string
 
 **Authentication not working:**
+
 - Verify `SESSION_SECRET` is set
 - Check `CLIENT_URL` and `SERVER_URL` are correct
 - Ensure CORS is configured properly
 
 **Database connection issues:**
+
 - Verify MongoDB URI is correct
 - Check IP whitelist in MongoDB Atlas
 - Ensure database user has correct permissions
 
 **High memory usage:**
+
 - Monitor with `pm2 monit`
 - Consider increasing server resources
 - Check for memory leaks in logs

@@ -390,7 +390,7 @@ Return a JSON array where each object has:
 Only include mappings where there is a clear educational relationship. Return ONLY valid JSON, no markdown.`;
 
     const response = await openaiClient.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5.4-mini',
       messages: [
         {
           role: 'system',
@@ -402,7 +402,7 @@ Only include mappings where there is a clear educational relationship. Return ON
         }
       ],
       temperature: 0.3,
-      max_tokens: 2000
+      max_completion_tokens: 2000
     });
 
     const content = response.choices[0].message.content.trim();
@@ -474,4 +474,3 @@ router.get('/project/:projectId', isOptionalAuth, async (req, res) => {
 });
 
 module.exports = router;
-
