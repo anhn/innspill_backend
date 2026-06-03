@@ -496,7 +496,7 @@ class RagService {
     };
   }
 
-  async planRetrieval(request = {}) {
+  async planRetrieval(request = {}, options = {}) {
     const fallbackQuery = this.buildDefaultQuery(request);
     const fallback = {
       queries: [fallbackQuery],
@@ -525,7 +525,7 @@ class RagService {
 
     try {
       const response = await this.openaiClient.chat.completions.create({
-        model: process.env.RAG_PLANNER_MODEL || 'gpt-5.4-mini',
+        model: options.model || request.feedbackModel || process.env.RAG_PLANNER_MODEL || 'gpt-5.4-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
         max_completion_tokens: 700,
@@ -551,7 +551,7 @@ class RagService {
     }
   }
 
-  async gradeChunks(request = {}, chunks = []) {
+  async gradeChunks(request = {}, chunks = [], options = {}) {
     if (!chunks.length || !this.openaiClient?.chat?.completions?.create) {
       return { chunks, debug: { reason: 'no_grader_or_chunks' } };
     }
@@ -580,7 +580,7 @@ class RagService {
 
     try {
       const response = await this.openaiClient.chat.completions.create({
-        model: process.env.RAG_GRADER_MODEL || 'gpt-5.4-mini',
+        model: options.model || request.feedbackModel || process.env.RAG_GRADER_MODEL || 'gpt-5.4-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
         max_completion_tokens: 900,
@@ -646,7 +646,7 @@ class RagService {
     }
 
     if (mode === 'agentic') {
-      const plan = await this.planRetrieval(request);
+      const plan = await this.planRetrieval(request, { model: options.model });
       const groups = [];
       for (const query of plan.queries || []) {
         const result = await this.retrieveHybrid(query, request, {
@@ -657,7 +657,7 @@ class RagService {
         groups.push(result.chunks);
       }
       const merged = this.mergeChunks(groups).slice(0, options.candidateLimit || 12);
-      const graded = await this.gradeChunks(request, merged);
+      const graded = await this.gradeChunks(request, merged, { model: options.model });
       const chunks = graded.chunks.slice(0, options.limit || 6);
       return {
         chunks,

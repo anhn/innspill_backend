@@ -21,6 +21,11 @@ const { isOptionalAuth } = require('../middleware/auth');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 const Joi = require('joi');
 
+const FEEDBACK_MODELS = ['gpt-5.4-mini', 'gpt-4o-mini'];
+const DEFAULT_FEEDBACK_MODEL = FEEDBACK_MODELS.includes(process.env.FEEDBACK_MODEL)
+  ? process.env.FEEDBACK_MODEL
+  : 'gpt-5.4-mini';
+
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -84,6 +89,7 @@ const generateFeedbackSchema = Joi.object({
   revisionQualityThreshold: Joi.number().min(0).max(5).optional().default(4),
   maxRevisionPasses: Joi.number().integer().min(0).max(3).optional().default(1),
   includeWorkflowDebug: Joi.boolean().optional().default(false),
+  feedbackModel: Joi.string().valid(...FEEDBACK_MODELS).optional().default(DEFAULT_FEEDBACK_MODEL),
   ragMode: Joi.string().valid('legacy', 'hybrid', 'agentic').optional().default('legacy'),
   includeRagDebug: Joi.boolean().optional().default(false)
 });
@@ -103,6 +109,7 @@ const generateFeedbackBatchSchema = Joi.object({
   revisionQualityThreshold: Joi.number().min(0).max(5).optional().default(4),
   maxRevisionPasses: Joi.number().integer().min(0).max(3).optional().default(1),
   includeWorkflowDebug: Joi.boolean().optional().default(false),
+  feedbackModel: Joi.string().valid(...FEEDBACK_MODELS).optional().default(DEFAULT_FEEDBACK_MODEL),
   ragMode: Joi.string().valid('legacy', 'hybrid', 'agentic').optional().default('legacy'),
   includeRagDebug: Joi.boolean().optional().default(false)
 });
@@ -119,13 +126,16 @@ function createFeedbackProcessor(value) {
   if (agentVersion === 'original') {
     return {
       agentVersion,
-      processor: new OriginalFeedbackGenerationAgent(openai)
+      processor: new OriginalFeedbackGenerationAgent(openai, {
+        model: value.feedbackModel
+      })
     };
   }
 
   return {
     agentVersion,
     processor: new FeedbackWorkflow(openai, {
+      model: value.feedbackModel,
       revisionDistribution: value.revisionDistribution,
       revisionQualityThreshold: value.revisionQualityThreshold,
       maxRevisionPasses: value.maxRevisionPasses
@@ -145,7 +155,10 @@ async function attachRetrievedContext(request, value) {
     };
   }
 
-  const result = await ragService.retrieveForFeedback(request, { mode: ragMode });
+  const result = await ragService.retrieveForFeedback(request, {
+    mode: ragMode,
+    model: value.feedbackModel
+  });
   request.retrievedContext = result.contextText || '';
   request.ragSources = result.chunks || [];
   return {
@@ -2046,6 +2059,7 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
     const request = {
       // Feedback mode
       feedbackMode: feedbackMode,
+      feedbackModel: value.feedbackModel,
       // Current submission + reflections (leave out for new modes)
       // If experimentInputText is provided, use it instead of the stored submission text
       submission: currentSubmissionText,
@@ -2139,6 +2153,7 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
         ...feedbackData,
         stakeholderId: value.stakeholderId || (submission.stakeholderId ? submission.stakeholderId.toString() : null),
         agentVersion,
+        feedbackModel: value.feedbackModel,
         useNewFeedbackGenerator: agentVersion === 'workflow',
         enableFeedbackSkill: value.enableFeedbackSkill === true,
         ragMode: value.ragMode,
@@ -2554,6 +2569,7 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
         const request = {
           // Feedback mode
           feedbackMode: feedbackMode,
+          feedbackModel: value.feedbackModel,
           // Current submission + reflections (leave out for new modes)
           submission: submission.submission,
           submissionAnswer: (feedbackMode === 'general') ? submissionAnswer : null,
@@ -2643,6 +2659,7 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
           submissionId,
           success: true,
           agentVersion,
+          feedbackModel: value.feedbackModel,
           useNewFeedbackGenerator: agentVersion === 'workflow',
           enableFeedbackSkill: value.enableFeedbackSkill === true,
           ragMode: value.ragMode,
