@@ -172,6 +172,8 @@ FORMAT: Return valid JSON only. No markdown, no code fences, no extra text. All 
       feedbackReceivedQuestion,
       conversationLog,
       submissionHistory,
+      retrievedContext,
+      ragMode,
     } = request;
 
     const parts = []; // Layer 1: Routing — mode + feedback mode (LLM reads this first to select behavior)
@@ -275,6 +277,16 @@ FORMAT: Return valid JSON only. No markdown, no code fences, no extra text. All 
           ? attachmentContent.substring(0, 3000) + "\n... [content truncated]"
           : attachmentContent;
       parts.push(`<attachment_content>\n${trimmed}\n</attachment_content>`);
+    }
+
+    if (retrievedContext) {
+      const trimmed =
+        retrievedContext.length > 5000
+          ? retrievedContext.substring(0, 5000) + "\n... [retrieved context truncated]"
+          : retrievedContext;
+      parts.push(
+        `<retrieved_context mode="${ragMode || "hybrid"}">\n${trimmed}\n</retrieved_context>`,
+      );
     }
 
     if (conversationLog) {

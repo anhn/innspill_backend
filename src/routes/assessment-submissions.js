@@ -16,6 +16,7 @@ const FeedbackGenerationAgent = require('../agents/FeedbackGenerationAgent');
 const OriginalFeedbackGenerationAgent = require('../agents/OriginalFeedbackGenerationAgent');
 const FeedbackWorkflow = require('../agents/FeedbackWorkflow');
 const OpenAI = require('openai');
+const RagService = require('../services/RagService');
 const { isOptionalAuth } = require('../middleware/auth');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 const Joi = require('joi');
@@ -24,6 +25,7 @@ const Joi = require('joi');
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+const ragService = new RagService(openai);
 
 // Validation schemas
 const createSubmissionSchema = Joi.object({
@@ -81,7 +83,9 @@ const generateFeedbackSchema = Joi.object({
   revisionDistribution: Joi.string().valid('auto', 'always', 'never').optional().default('auto'),
   revisionQualityThreshold: Joi.number().min(0).max(5).optional().default(4),
   maxRevisionPasses: Joi.number().integer().min(0).max(3).optional().default(1),
-  includeWorkflowDebug: Joi.boolean().optional().default(false)
+  includeWorkflowDebug: Joi.boolean().optional().default(false),
+  ragMode: Joi.string().valid('legacy', 'hybrid', 'agentic').optional().default('legacy'),
+  includeRagDebug: Joi.boolean().optional().default(false)
 });
 
 const generateFeedbackBatchSchema = Joi.object({
@@ -98,7 +102,9 @@ const generateFeedbackBatchSchema = Joi.object({
   revisionDistribution: Joi.string().valid('auto', 'always', 'never').optional().default('auto'),
   revisionQualityThreshold: Joi.number().min(0).max(5).optional().default(4),
   maxRevisionPasses: Joi.number().integer().min(0).max(3).optional().default(1),
-  includeWorkflowDebug: Joi.boolean().optional().default(false)
+  includeWorkflowDebug: Joi.boolean().optional().default(false),
+  ragMode: Joi.string().valid('legacy', 'hybrid', 'agentic').optional().default('legacy'),
+  includeRagDebug: Joi.boolean().optional().default(false)
 });
 
 function resolveAgentVersion(value) {
@@ -124,6 +130,28 @@ function createFeedbackProcessor(value) {
       revisionQualityThreshold: value.revisionQualityThreshold,
       maxRevisionPasses: value.maxRevisionPasses
     })
+  };
+}
+
+async function attachRetrievedContext(request, value) {
+  const ragMode = value.ragMode || 'legacy';
+  request.ragMode = ragMode;
+  if (ragMode === 'legacy') {
+    request.retrievedContext = '';
+    return {
+      mode: ragMode,
+      chunks: [],
+      debug: { mode: 'legacy' }
+    };
+  }
+
+  const result = await ragService.retrieveForFeedback(request, { mode: ragMode });
+  request.retrievedContext = result.contextText || '';
+  request.ragSources = result.chunks || [];
+  return {
+    mode: ragMode,
+    chunks: result.chunks || [],
+    debug: result.debug || null
   };
 }
 
@@ -1681,7 +1709,9 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
       feedbackMode: Joi.string().valid('fewshot', 'rule-based', 'revision', 'framework', 'student-involving', 'general').optional().default('general'),
       skillId: Joi.string().optional().trim(),
       enableFeedbackSkill: Joi.boolean().optional().default(false),
-      instruction: Joi.string().optional().trim() // For rule-based mode
+      instruction: Joi.string().optional().trim(), // For rule-based mode
+      ragMode: Joi.string().valid('legacy', 'hybrid', 'agentic').optional().default('legacy'),
+      includeRagDebug: Joi.boolean().optional().default(false)
     });
 
     const { error, value } = schema.validate(req.query);
@@ -1840,6 +1870,8 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
       instruction: value.instruction || null
     };
 
+    const ragResult = await attachRetrievedContext(request, value);
+
     // Build the full prompt (system prompt + user message)
     const mode = agent.detectMode(request);
     const systemPrompt = agent.getSystemPrompt();
@@ -1866,11 +1898,14 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
         hasPreviousSubmission: !!previousSubmission,
         hasPreviousFeedback: !!previousFeedback,
         useAIGuideline: value.useAIGuideline,
+        ragMode: value.ragMode,
+        retrievedChunkCount: ragResult.chunks.length,
         hasPersona: !!persona,
         attachmentCount: attachments.length,
         attachmentContentLength: attachmentContent ? attachmentContent.length : 0,
         hasFewShotExamples: isLearnFromHuman && fewShotExamples ? fewShotExamples.length > 0 : false
-      }
+      },
+      ...(value.includeRagDebug ? { ragDebug: ragResult.debug, ragSources: ragResult.chunks } : {})
     };
 
     res.status(200).json({
@@ -2048,6 +2083,8 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
       instruction: value.instruction || null
     };
 
+    const ragResult = await attachRetrievedContext(request, value);
+
     const startTime = Date.now();
     const response = await feedbackProcessor.process(request);
     const processingTime = Date.now() - startTime;
@@ -2104,6 +2141,8 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
         agentVersion,
         useNewFeedbackGenerator: agentVersion === 'workflow',
         enableFeedbackSkill: value.enableFeedbackSkill === true,
+        ragMode: value.ragMode,
+        retrievedChunkCount: ragResult.chunks.length,
         revisionDistribution: value.revisionDistribution,
         revisionQualityThreshold: value.revisionQualityThreshold
       },
@@ -2114,6 +2153,10 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
 
     if (value.includeWorkflowDebug && agentVersion === 'workflow') {
       responseBody.workflowDebug = response.workflow || null;
+    }
+    if (value.includeRagDebug) {
+      responseBody.ragDebug = ragResult.debug;
+      responseBody.ragSources = ragResult.chunks;
     }
 
     res.status(200).json(responseBody);
@@ -2547,6 +2590,7 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
           instruction: value.instruction || null
         };
 
+        const ragResult = await attachRetrievedContext(request, value);
         const response = await feedbackProcessor.process(request);
 
         if (!response.success) {
@@ -2601,11 +2645,16 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
           agentVersion,
           useNewFeedbackGenerator: agentVersion === 'workflow',
           enableFeedbackSkill: value.enableFeedbackSkill === true,
+          ragMode: value.ragMode,
+          retrievedChunkCount: ragResult.chunks.length,
           revisionDistribution: value.revisionDistribution,
           revisionQualityThreshold: value.revisionQualityThreshold,
           ...feedbackData,
           ...(value.includeWorkflowDebug && agentVersion === 'workflow'
             ? { workflowDebug: response.workflow || null }
+            : {}),
+          ...(value.includeRagDebug
+            ? { ragDebug: ragResult.debug, ragSources: ragResult.chunks }
             : {})
         });
         generated++;

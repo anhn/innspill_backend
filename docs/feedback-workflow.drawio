@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="feedback-workflow" name="New Feedback Workflow">
-        <mxGraphModel dx="583" dy="743" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+        <mxGraphModel dx="1020" dy="1102" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -16,17 +16,34 @@
                 <mxCell id="review" value="Review JSON&lt;br&gt;needsRevision&lt;br&gt;overallQualityScore&lt;br&gt;evidenceGroundingScore&lt;br&gt;rubricAlignmentScore&lt;br&gt;scoreConsistencyScore&lt;br&gt;languageConsistencyScore&lt;br&gt;issues[]&lt;br&gt;revisionInstructions" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="workflowLane" vertex="1">
                     <mxGeometry x="460" y="360" width="250" height="190" as="geometry"/>
                 </mxCell>
-                <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=2;" parent="workflowLane" edge="1">
+                <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=2;exitX=0.048;exitY=0.889;exitDx=0;exitDy=0;exitPerimeter=0;" parent="workflowLane" edge="1" source="initial">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
+                            <mxPoint x="440" y="299"/>
                             <mxPoint x="440" y="455"/>
                         </Array>
                         <mxPoint x="440" y="310" as="sourcePoint"/>
                         <mxPoint x="360" y="455" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
+                <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=2;dashed=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;" parent="workflowLane" source="review" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="445" y="503"/>
+                            <mxPoint x="445" y="875"/>
+                        </Array>
+                        <mxPoint x="445.11" y="510" as="sourcePoint"/>
+                        <mxPoint x="270" y="875.1111111111113" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="noRevision" value="No revision path&lt;br&gt;Use initial generated feedback as final feedback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="workflowLane" vertex="1">
+                    <mxGeometry x="480" y="630" width="250" height="90" as="geometry"/>
+                </mxCell>
                 <mxCell id="responseLane" value="Response / experiment output" style="swimlane;html=1;rounded=0;startSize=30;horizontal=0;fillColor=#f7fff0;strokeColor=#4b8f29;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="1230" y="90" width="330" height="970" as="geometry"/>
+                </mxCell>
+                <mxCell id="final" value="Final feedback JSON&lt;br&gt;feedback&lt;br&gt;feedforward&lt;br&gt;concept&lt;br&gt;reflection&lt;br&gt;criticalThinking&lt;br&gt;taskQualityScore&lt;br&gt;reflectionScore&lt;br&gt;criticalthinkingScore&lt;br&gt;conceptMasteryScore" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" parent="responseLane" vertex="1">
+                    <mxGeometry x="35" y="120" width="250" height="237.5" as="geometry"/>
                 </mxCell>
                 <mxCell id="request" value="Frontend / script calls API&lt;br&gt;&lt;b&gt;POST /assessment-submissions/:id/generate-feedback&lt;/b&gt;&lt;br&gt;body: feedbackMode, agentVersion=workflow,&lt;br&gt;useAIGuideline, includeWorkflowDebug" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=center;" parent="1" vertex="1">
                     <mxGeometry x="80" y="140" width="250" height="110" as="geometry"/>
@@ -43,8 +60,8 @@
                 <mxCell id="workflow" value="new FeedbackWorkflow(openai)&lt;br&gt;process(request)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="490" y="150" width="260" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="generation" value="1. FeedbackGenerationAgent&lt;br&gt;Model: gpt-5.4-mini&lt;br&gt;Builds structured prompt&lt;br&gt;Returns initial JSON feedback&lt;br&gt;feedback/feedforward/concept/reflection/criticalThinking/scores" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-                    <mxGeometry x="490" y="280" width="280" height="140" as="geometry"/>
+                <mxCell id="generation" value="1. FeedbackGenerationAgent&lt;br&gt;Model: gpt-5.4-mini&lt;br&gt;Builds structured prompt&lt;br&gt;Returns initial JSON feedback&lt;br&gt;feedback/feedforward/concept/&lt;div&gt;reflection/criticalThinking/scores&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+                    <mxGeometry x="490" y="280" width="310" height="140" as="geometry"/>
                 </mxCell>
                 <mxCell id="initial" value="workflow.initialResponse&lt;br&gt;First draft feedback JSON&lt;br&gt;Stored only in debug output when requested" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
                     <mxGeometry x="850" y="305" width="250" height="95" as="geometry"/>
@@ -57,12 +74,6 @@
                 </mxCell>
                 <mxCell id="revision" value="3. FeedbackRevisionAgent&lt;br&gt;Model: gpt-5.4-mini&lt;br&gt;Inputs: original generated feedback + revisionInstructions + same request context&lt;br&gt;Outputs revised final JSON feedback&lt;br&gt;maxRevisionPasses = 1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
                     <mxGeometry x="500" y="900" width="330" height="130" as="geometry"/>
-                </mxCell>
-                <mxCell id="noRevision" value="No revision path&lt;br&gt;Use initial generated feedback as final feedback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
-                    <mxGeometry x="870" y="715" width="250" height="90" as="geometry"/>
-                </mxCell>
-                <mxCell id="final" value="Final feedback JSON&lt;br&gt;feedback&lt;br&gt;feedforward&lt;br&gt;concept&lt;br&gt;reflection&lt;br&gt;criticalThinking&lt;br&gt;taskQualityScore&lt;br&gt;reflectionScore&lt;br&gt;criticalthinkingScore&lt;br&gt;conceptMasteryScore" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" parent="1" vertex="1">
-                    <mxGeometry x="1265" y="285" width="250" height="190" as="geometry"/>
                 </mxCell>
                 <mxCell id="debug" value="Optional workflowDebug&lt;br&gt;initialResponse&lt;br&gt;evaluationRaw&lt;br&gt;review&lt;br&gt;revisionInstructions&lt;br&gt;evaluated / revised&lt;br&gt;revisionPasses&lt;br&gt;evaluationFailed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
                     <mxGeometry x="1265" y="540" width="250" height="160" as="geometry"/>
@@ -113,13 +124,6 @@
                 </mxCell>
                 <mxCell id="e12" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=2;" parent="1" source="decision" target="noRevision" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=2;dashed=1;" parent="1" source="review" target="revision" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="1005" y="965"/>
-                        </Array>
-                    </mxGeometry>
                 </mxCell>
                 <mxCell id="e14" value="revised output" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=2;" parent="1" source="revision" target="final" edge="1">
                     <mxGeometry relative="1" as="geometry">
