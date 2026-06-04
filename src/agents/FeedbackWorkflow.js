@@ -4,9 +4,11 @@ const FeedbackRevisionAgent = require("./FeedbackRevisionAgent");
 
 class FeedbackWorkflow {
   constructor(openaiClient, options = {}) {
-    this.generationAgent = new FeedbackGenerationAgent(openaiClient);
-    this.evaluationAgent = new FeedbackEvaluationAgent(openaiClient);
-    this.revisionAgent = new FeedbackRevisionAgent(openaiClient);
+    const agentOptions = { model: options.model };
+    this.generationAgent = new FeedbackGenerationAgent(openaiClient, agentOptions);
+    this.evaluationAgent = new FeedbackEvaluationAgent(openaiClient, agentOptions);
+    this.revisionAgent = new FeedbackRevisionAgent(openaiClient, agentOptions);
+    this.model = this.generationAgent.model;
     this.maxRevisionPasses =
       typeof options.maxRevisionPasses === "number" ? options.maxRevisionPasses : 1;
     this.revisionDistribution = options.revisionDistribution || "auto";

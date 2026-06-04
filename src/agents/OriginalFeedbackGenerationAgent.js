@@ -8,8 +8,8 @@ const BaseAgent = require("./BaseAgent");
  * 3. REFLECTION_ONLY → supportive reflection-focused evaluation
  */
 class FeedbackGenerationAgent extends BaseAgent {
-  constructor(openaiClient) {
-    super("Feedback Generation Agent", openaiClient);
+  constructor(openaiClient, options = {}) {
+    super("Feedback Generation Agent", openaiClient, options);
   }
 
   /**
@@ -350,7 +350,7 @@ IMPORTANT RULES
       // Add timeout protection for individual API calls
       const response = await Promise.race([
         this.openaiClient.chat.completions.create({
-          model: "gpt-5.4-mini",
+          model: this.model,
           messages: messages,
           temperature: 0.7,
           max_completion_tokens: this.getMaxTokens(),

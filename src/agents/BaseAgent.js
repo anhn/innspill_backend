@@ -3,9 +3,10 @@
  * All specialized agents inherit from this base class
  */
 class BaseAgent {
-  constructor(name, openaiClient) {
+  constructor(name, openaiClient, options = {}) {
     this.name = name;
     this.openaiClient = openaiClient;
+    this.model = options.model || process.env.FEEDBACK_MODEL || "gpt-5.4-mini";
     const languageDirective = 'Response in the same language with the input text.';
     this.systemPrompt = `${this.getSystemPrompt().trim()}\n\n${languageDirective}`;
   }
@@ -63,7 +64,7 @@ class BaseAgent {
       // Add timeout protection for individual API calls
       const response = await Promise.race([
         this.openaiClient.chat.completions.create({
-          model: "gpt-5.4-mini",
+          model: this.model,
           messages: messages,
           temperature: 0.7,
           max_completion_tokens: this.getMaxTokens()
