@@ -2,8 +2,8 @@ const BaseAgent = require("./BaseAgent");
 const fs = require("fs");
 const path = require("path");
 class FeedbackGenerationAgent extends BaseAgent {
-  constructor(openaiClient) {
-    super("Feedback Generation Agent", openaiClient);
+  constructor(openaiClient, options = {}) {
+    super("Feedback Generation Agent", openaiClient, options);
     this.defaultSkillId = "research-programming-review";
   }
   getSystemPrompt() {
@@ -345,7 +345,7 @@ FORMAT: Return valid JSON only. No markdown, no code fences, no extra text. All 
       const userMessage = this.buildContext(request, mode);
 
       const response = await this.openaiClient.chat.completions.create({
-        model: "gpt-5.4-mini",
+        model: this.model,
         messages: [
           { role: "system", content: this.systemPrompt },
           { role: "user", content: userMessage },

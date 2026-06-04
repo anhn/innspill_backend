@@ -1,8 +1,8 @@
 const BaseAgent = require("./BaseAgent");
 
 class FeedbackEvaluationAgent extends BaseAgent {
-  constructor(openaiClient) {
-    super("Feedback Evaluation Agent", openaiClient);
+  constructor(openaiClient, options = {}) {
+    super("Feedback Evaluation Agent", openaiClient, options);
   }
 
   getSystemPrompt() {
@@ -131,7 +131,7 @@ Return valid JSON only:
   async process({ request, generatedFeedback }) {
     try {
       const response = await this.openaiClient.chat.completions.create({
-        model: "gpt-5.4-mini",
+        model: this.model,
         messages: [
           { role: "system", content: this.systemPrompt },
           { role: "user", content: this.buildContext(request, generatedFeedback) },

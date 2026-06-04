@@ -1,8 +1,8 @@
 const BaseAgent = require("./BaseAgent");
 
 class FeedbackRevisionAgent extends BaseAgent {
-  constructor(openaiClient) {
-    super("Feedback Revision Agent", openaiClient);
+  constructor(openaiClient, options = {}) {
+    super("Feedback Revision Agent", openaiClient, options);
   }
 
   getSystemPrompt() {
@@ -123,7 +123,7 @@ Revise AI-generated educational feedback using internal revision instructions fr
   async process({ request, generatedFeedback, revisionInstructions }) {
     try {
       const response = await this.openaiClient.chat.completions.create({
-        model: "gpt-5.4-mini",
+        model: this.model,
         messages: [
           { role: "system", content: this.systemPrompt },
           {
