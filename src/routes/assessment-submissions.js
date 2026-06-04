@@ -13,15 +13,24 @@ const Role = require('../models/Role');
 const StudentGroup = require('../models/StudentGroup');
 const User = require('../models/User');
 const FeedbackGenerationAgent = require('../agents/FeedbackGenerationAgent');
+const OriginalFeedbackGenerationAgent = require('../agents/OriginalFeedbackGenerationAgent');
+const FeedbackWorkflow = require('../agents/FeedbackWorkflow');
 const OpenAI = require('openai');
+const RagService = require('../services/RagService');
 const { isOptionalAuth } = require('../middleware/auth');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 const Joi = require('joi');
+
+const FEEDBACK_MODELS = ['gpt-5.4-mini', 'gpt-4o-mini'];
+const DEFAULT_FEEDBACK_MODEL = FEEDBACK_MODELS.includes(process.env.FEEDBACK_MODEL)
+  ? process.env.FEEDBACK_MODEL
+  : 'gpt-5.4-mini';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+const ragService = new RagService(openai);
 
 // Validation schemas
 const createSubmissionSchema = Joi.object({
@@ -68,10 +77,21 @@ const generateFeedbackSchema = Joi.object({
   useAIGuideline: Joi.boolean().optional().default(true),
   updateStakeholderId: Joi.boolean().optional().default(false), // Only update submission's stakeholderId if explicitly requested
   feedbackMode: Joi.string().valid('fewshot', 'rule-based', 'revision', 'framework', 'student-involving', 'general').optional().default('general'),
+  skillId: Joi.string().optional().trim(),
+  enableFeedbackSkill: Joi.boolean().optional().default(false),
   instruction: Joi.string().optional().trim(), // For rule-based mode
   // Optional override text for experiments; when provided and non-empty,
   // this will be used instead of the stored submission text
-  experimentInputText: Joi.string().optional().allow('', null).trim()
+  experimentInputText: Joi.string().optional().allow('', null).trim(),
+  useNewFeedbackGenerator: Joi.boolean().optional(),
+  agentVersion: Joi.string().valid('workflow', 'original').optional().default('workflow'),
+  revisionDistribution: Joi.string().valid('auto', 'always', 'never').optional().default('auto'),
+  revisionQualityThreshold: Joi.number().min(0).max(5).optional().default(4),
+  maxRevisionPasses: Joi.number().integer().min(0).max(3).optional().default(1),
+  includeWorkflowDebug: Joi.boolean().optional().default(false),
+  feedbackModel: Joi.string().valid(...FEEDBACK_MODELS).optional().default(DEFAULT_FEEDBACK_MODEL),
+  ragMode: Joi.string().valid('legacy', 'hybrid', 'agentic').optional().default('legacy'),
+  includeRagDebug: Joi.boolean().optional().default(false)
 });
 
 const generateFeedbackBatchSchema = Joi.object({
@@ -80,8 +100,73 @@ const generateFeedbackBatchSchema = Joi.object({
   useAIGuideline: Joi.boolean().optional().default(true),
   updateStakeholderId: Joi.boolean().optional().default(false), // Only update submission's stakeholderId if explicitly requested
   feedbackMode: Joi.string().valid('fewshot', 'rule-based', 'revision', 'framework', 'student-involving', 'general').optional().default('general'),
-  instruction: Joi.string().optional().trim() // For rule-based mode
+  skillId: Joi.string().optional().trim(),
+  enableFeedbackSkill: Joi.boolean().optional().default(false),
+  instruction: Joi.string().optional().trim(), // For rule-based mode
+  useNewFeedbackGenerator: Joi.boolean().optional(),
+  agentVersion: Joi.string().valid('workflow', 'original').optional().default('workflow'),
+  revisionDistribution: Joi.string().valid('auto', 'always', 'never').optional().default('auto'),
+  revisionQualityThreshold: Joi.number().min(0).max(5).optional().default(4),
+  maxRevisionPasses: Joi.number().integer().min(0).max(3).optional().default(1),
+  includeWorkflowDebug: Joi.boolean().optional().default(false),
+  feedbackModel: Joi.string().valid(...FEEDBACK_MODELS).optional().default(DEFAULT_FEEDBACK_MODEL),
+  ragMode: Joi.string().valid('legacy', 'hybrid', 'agentic').optional().default('legacy'),
+  includeRagDebug: Joi.boolean().optional().default(false)
 });
+
+function resolveAgentVersion(value) {
+  if (typeof value.useNewFeedbackGenerator === 'boolean') {
+    return value.useNewFeedbackGenerator ? 'workflow' : 'original';
+  }
+  return value.agentVersion || 'workflow';
+}
+
+function createFeedbackProcessor(value) {
+  const agentVersion = resolveAgentVersion(value);
+  if (agentVersion === 'original') {
+    return {
+      agentVersion,
+      processor: new OriginalFeedbackGenerationAgent(openai, {
+        model: value.feedbackModel
+      })
+    };
+  }
+
+  return {
+    agentVersion,
+    processor: new FeedbackWorkflow(openai, {
+      model: value.feedbackModel,
+      revisionDistribution: value.revisionDistribution,
+      revisionQualityThreshold: value.revisionQualityThreshold,
+      maxRevisionPasses: value.maxRevisionPasses
+    })
+  };
+}
+
+async function attachRetrievedContext(request, value) {
+  const ragMode = value.ragMode || 'legacy';
+  request.ragMode = ragMode;
+  if (ragMode === 'legacy') {
+    request.retrievedContext = '';
+    return {
+      mode: ragMode,
+      chunks: [],
+      debug: { mode: 'legacy' }
+    };
+  }
+
+  const result = await ragService.retrieveForFeedback(request, {
+    mode: ragMode,
+    model: value.feedbackModel
+  });
+  request.retrievedContext = result.contextText || '';
+  request.ragSources = result.chunks || [];
+  return {
+    mode: ragMode,
+    chunks: result.chunks || [],
+    debug: result.debug || null
+  };
+}
 
 const saveFeedbackSchema = Joi.object({
   feedback: Joi.string().required().trim().min(1),
@@ -1635,7 +1720,11 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
       stakeholderId: Joi.string().optional().trim(),
       useAIGuideline: Joi.boolean().optional().default(true),
       feedbackMode: Joi.string().valid('fewshot', 'rule-based', 'revision', 'framework', 'student-involving', 'general').optional().default('general'),
-      instruction: Joi.string().optional().trim() // For rule-based mode
+      skillId: Joi.string().optional().trim(),
+      enableFeedbackSkill: Joi.boolean().optional().default(false),
+      instruction: Joi.string().optional().trim(), // For rule-based mode
+      ragMode: Joi.string().valid('legacy', 'hybrid', 'agentic').optional().default('legacy'),
+      includeRagDebug: Joi.boolean().optional().default(false)
     });
 
     const { error, value } = schema.validate(req.query);
@@ -1778,6 +1867,8 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
       projectId: task.projectId ? task.projectId.toString() : null,
       taskTitle: task.taskTitle,
       description: task.description,
+      taskOutcome: task.outcome || '',
+      taskInstruction: task.instruction || '',
       keyword: task.keyword,
       submissionDeadline: task.submissionDeadline,
       enabledAIGuideline: value.useAIGuideline ? task.enabledAIGuideline : false,
@@ -1786,13 +1877,18 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
       // Few-shot learning (for "fewshot" mode or "Learn from Human")
       fewShotPrompt: fewShotPrompt,
       isLearnFromHuman: isLearnFromHuman,
+      enableSkill: value.enableFeedbackSkill === true,
+      skillId: value.enableFeedbackSkill ? (value.skillId || null) : null,
       // Rule-based mode
       instruction: value.instruction || null
     };
 
+    const ragResult = await attachRetrievedContext(request, value);
+
     // Build the full prompt (system prompt + user message)
-    const systemPrompt = agent.getSystemPrompt(feedbackMode);
-    const userMessage = agent.formatUserMessage(request);
+    const mode = agent.detectMode(request);
+    const systemPrompt = agent.getSystemPrompt();
+    const userMessage = agent.buildContext(request, mode);
     const fullPrompt = `${systemPrompt}\n\n${userMessage}`;
 
     // Prepare response with metadata
@@ -1815,11 +1911,14 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
         hasPreviousSubmission: !!previousSubmission,
         hasPreviousFeedback: !!previousFeedback,
         useAIGuideline: value.useAIGuideline,
+        ragMode: value.ragMode,
+        retrievedChunkCount: ragResult.chunks.length,
         hasPersona: !!persona,
         attachmentCount: attachments.length,
         attachmentContentLength: attachmentContent ? attachmentContent.length : 0,
         hasFewShotExamples: isLearnFromHuman && fewShotExamples ? fewShotExamples.length > 0 : false
-      }
+      },
+      ...(value.includeRagDebug ? { ragDebug: ragResult.debug, ragSources: ragResult.chunks } : {})
     };
 
     res.status(200).json({
@@ -1956,11 +2055,11 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
       ? value.experimentInputText.trim()
       : submission.submission;
 
-    // Generate feedback using AI with new comprehensive request structure
-    const agent = new FeedbackGenerationAgent(openai);
+    const { agentVersion, processor: feedbackProcessor } = createFeedbackProcessor(value);
     const request = {
       // Feedback mode
       feedbackMode: feedbackMode,
+      feedbackModel: value.feedbackModel,
       // Current submission + reflections (leave out for new modes)
       // If experimentInputText is provided, use it instead of the stored submission text
       submission: currentSubmissionText,
@@ -1982,20 +2081,26 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
       projectId: task.projectId ? task.projectId.toString() : null,
       taskTitle: task.taskTitle,
       description: task.description,
+      taskOutcome: task.outcome || '',
+      taskInstruction: task.instruction || '',
       keyword: task.keyword,
       submissionDeadline: task.submissionDeadline,
-      enabledAIGuideline: task.enabledAIGuideline,
+      enabledAIGuideline: value.useAIGuideline ? task.enabledAIGuideline : false,
       submissionQuestion: (feedbackMode === 'general') ? task.submissionQuestion : null,
       feedbackReceivedQuestion: (feedbackMode === 'general') ? task.feedbackReceivedQuestion : null,
       // Few-shot learning (for "fewshot" mode or "Learn from Human")
       fewShotPrompt: fewShotPrompt,
       isLearnFromHuman: isLearnFromHuman,
+      enableSkill: value.enableFeedbackSkill === true,
+      skillId: value.enableFeedbackSkill ? (value.skillId || null) : null,
       // Rule-based mode
       instruction: value.instruction || null
     };
 
+    const ragResult = await attachRetrievedContext(request, value);
+
     const startTime = Date.now();
-    const response = await agent.process(request);
+    const response = await feedbackProcessor.process(request);
     const processingTime = Date.now() - startTime;
 
     if (!response.success) {
@@ -2042,16 +2147,34 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
     }
 
     // Return the generated comprehensive feedback (NOT saved to database yet)
-    res.status(200).json({
+    const responseBody = {
       success: true,
       data: {
         ...feedbackData,
-        stakeholderId: value.stakeholderId || (submission.stakeholderId ? submission.stakeholderId.toString() : null)
+        stakeholderId: value.stakeholderId || (submission.stakeholderId ? submission.stakeholderId.toString() : null),
+        agentVersion,
+        feedbackModel: value.feedbackModel,
+        useNewFeedbackGenerator: agentVersion === 'workflow',
+        enableFeedbackSkill: value.enableFeedbackSkill === true,
+        ragMode: value.ragMode,
+        retrievedChunkCount: ragResult.chunks.length,
+        revisionDistribution: value.revisionDistribution,
+        revisionQualityThreshold: value.revisionQualityThreshold
       },
       usage: response.usage,
       usageInternal: response.usageInternal,
       processingTime
-    });
+    };
+
+    if (value.includeWorkflowDebug && agentVersion === 'workflow') {
+      responseBody.workflowDebug = response.workflow || null;
+    }
+    if (value.includeRagDebug) {
+      responseBody.ragDebug = ragResult.debug;
+      responseBody.ragSources = ragResult.chunks;
+    }
+
+    res.status(200).json(responseBody);
   } catch (error) {
     console.error('❌ Error generating feedback:', error.message);
     res.status(500).json({
@@ -2442,11 +2565,11 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
           ? submission.feedbackReceivedQuestionAnswers[submission.feedbackReceivedQuestionAnswers.length - 1].answer
           : null;
 
-        // Generate feedback using AI with new comprehensive request structure
-        const agent = new FeedbackGenerationAgent(openai);
+        const { agentVersion, processor: feedbackProcessor } = createFeedbackProcessor(value);
         const request = {
           // Feedback mode
           feedbackMode: feedbackMode,
+          feedbackModel: value.feedbackModel,
           // Current submission + reflections (leave out for new modes)
           submission: submission.submission,
           submissionAnswer: (feedbackMode === 'general') ? submissionAnswer : null,
@@ -2467,19 +2590,24 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
           projectId: task.projectId ? task.projectId.toString() : null,
           taskTitle: task.taskTitle,
           description: task.description,
+          taskOutcome: task.outcome || '',
+          taskInstruction: task.instruction || '',
           keyword: task.keyword,
           submissionDeadline: task.submissionDeadline,
-          enabledAIGuideline: task.enabledAIGuideline,
+          enabledAIGuideline: shouldUseAIGuideline ? task.enabledAIGuideline : false,
           submissionQuestion: (feedbackMode === 'general') ? task.submissionQuestion : null,
           feedbackReceivedQuestion: (feedbackMode === 'general') ? task.feedbackReceivedQuestion : null,
           // Few-shot learning (for "fewshot" mode or "Learn from Human")
           fewShotPrompt: fewShotPrompt,
           isLearnFromHuman: isLearnFromHuman,
+          enableSkill: value.enableFeedbackSkill === true,
+          skillId: value.enableFeedbackSkill ? (value.skillId || null) : null,
           // Rule-based mode
           instruction: value.instruction || null
         };
 
-        const response = await agent.process(request);
+        const ragResult = await attachRetrievedContext(request, value);
+        const response = await feedbackProcessor.process(request);
 
         if (!response.success) {
           results.push({
@@ -2530,7 +2658,21 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
         results.push({
           submissionId,
           success: true,
-          ...feedbackData
+          agentVersion,
+          feedbackModel: value.feedbackModel,
+          useNewFeedbackGenerator: agentVersion === 'workflow',
+          enableFeedbackSkill: value.enableFeedbackSkill === true,
+          ragMode: value.ragMode,
+          retrievedChunkCount: ragResult.chunks.length,
+          revisionDistribution: value.revisionDistribution,
+          revisionQualityThreshold: value.revisionQualityThreshold,
+          ...feedbackData,
+          ...(value.includeWorkflowDebug && agentVersion === 'workflow'
+            ? { workflowDebug: response.workflow || null }
+            : {}),
+          ...(value.includeRagDebug
+            ? { ragDebug: ragResult.debug, ragSources: ragResult.chunks }
+            : {})
         });
         generated++;
 
@@ -3924,4 +4066,3 @@ router.get('/group/:groupId/task-status', isOptionalAuth, async (req, res) => {
 });
 
 module.exports = router;
-

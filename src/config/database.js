@@ -15,15 +15,17 @@ async function connectDB() {
   }
 
   const uri = process.env.MONGO_URI;
-  
+
   // Validate URI format
   if (!uri) {
     throw new Error("MONGO_URI environment variable is not set");
   }
 
   // Check if URI has proper scheme
-  if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
-    throw new Error("Invalid MongoDB URI scheme. Must start with 'mongodb://' or 'mongodb+srv://'");
+  if (!uri.startsWith("mongodb://") && !uri.startsWith("mongodb+srv://")) {
+    throw new Error(
+      "Invalid MongoDB URI scheme. Must start with 'mongodb://' or 'mongodb+srv://'",
+    );
   }
 
   const opts = {

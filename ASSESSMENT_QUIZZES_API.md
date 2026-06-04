@@ -536,10 +536,9 @@ All endpoints use `isOptionalAuth` middleware (authentication is optional).
 
 4. **Options Array**: Each question must have at least 2 options, but typically has 4 options for multiple-choice questions.
 
-5. **AI Generation**: The `/generate` endpoint uses OpenAI GPT-4o-mini to generate questions based on:
+5. **AI Generation**: The `/generate` endpoint uses OpenAI GPT-5.4 mini to generate questions based on:
    - Project learning objectives
    - Task keywords (extracted from provided taskIds)
    - Additional keywords provided directly
 
 6. **Authentication**: All endpoints use optional authentication (`isOptionalAuth`), meaning authentication is not strictly required but can be provided.
-

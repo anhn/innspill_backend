@@ -153,10 +153,10 @@ getSystemPrompt() {
       // Call OpenAI API
       const response = await Promise.race([
         this.openaiClient.chat.completions.create({
-          model: "gpt-4o-mini",
+          model: "gpt-5.4-mini",
           messages: messages,
           temperature: 0.7,
-          max_tokens: this.getMaxTokens()
+          max_completion_tokens: this.getMaxTokens()
         }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error(`OpenAI API timeout after 120s in ${this.name}`)), 120000)

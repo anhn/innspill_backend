@@ -1,16 +1,16 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const CoursePlanDoc = require('../models/CoursePlanDoc');
-const { isOptionalAuth } = require('../middleware/auth');
+const CoursePlanDoc = require("../models/CoursePlanDoc");
+const { isOptionalAuth } = require("../middleware/auth");
 
 /**
  * POST /api/v1/course-plan-docs
  * Save a course plan document version (original, analysis, or revision)
  */
-router.post('/', isOptionalAuth, async (req, res) => {
+router.post("/", isOptionalAuth, async (req, res) => {
   try {
-    console.log('📝 Save Course Plan Doc - Request received');
-    
+    console.log("📝 Save Course Plan Doc - Request received");
+
     const {
       coursePlanName,
       sessionId,
@@ -22,29 +22,30 @@ router.post('/', isOptionalAuth, async (req, res) => {
       userName,
       createdAt,
       tags,
-      metadata
+      metadata,
     } = req.body;
 
     console.log(`📝 Course: ${coursePlanName}`);
-    console.log(`📝 User: ${userName || req.user?.id || 'anonymous'}`);
+    console.log(`📝 User: ${userName || req.user?.id || "anonymous"}`);
     console.log(`📝 Session: ${sessionId}`);
     console.log(`📝 Version: ${versionType} v${versionNumber}`);
     console.log(`📝 Title: ${title}`);
 
     // Validate required fields
     if (!coursePlanName || !sessionId || !versionType || !title || !content) {
-      console.log('❌ Validation failed: Missing required fields');
+      console.log("❌ Validation failed: Missing required fields");
       return res.status(400).json({
         success: false,
-        message: 'coursePlanName, sessionId, versionType, title, and content are required'
+        message:
+          "coursePlanName, sessionId, versionType, title, and content are required",
       });
     }
 
     // Validate versionType
-    if (!['original', 'analysis', 'revision'].includes(versionType)) {
+    if (!["original", "analysis", "revision"].includes(versionType)) {
       return res.status(400).json({
         success: false,
-        message: 'versionType must be "original", "analysis", or "revision"'
+        message: 'versionType must be "original", "analysis", or "revision"',
       });
     }
 
@@ -61,13 +62,13 @@ router.post('/', isOptionalAuth, async (req, res) => {
       teacherInfo: teacherInfo || {},
       tags: tags || [],
       metadata: {
-        notes: metadata?.notes || '',
+        notes: metadata?.notes || "",
         frontend_version_id: metadata?.frontend_version_id || null,
         agent: metadata?.agent || null,
         tokenUsage: metadata?.tokenUsage || null,
         processingTime: metadata?.processingTime || null,
-        fileSize: content.length
-      }
+        fileSize: content.length,
+      },
     });
 
     const saved = await coursePlanDoc.save();
@@ -81,21 +82,20 @@ router.post('/', isOptionalAuth, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Course plan document saved successfully',
+      message: "Course plan document saved successfully",
       documentId: saved._id,
       data: {
-        _id: saved._id
-      }
+        _id: saved._id,
+      },
     });
-
   } catch (error) {
-    console.error('❌ Error saving course plan document:', error.message);
-    console.error('   Error code:', error.code);
-    console.error('   Error name:', error.name);
+    console.error("❌ Error saving course plan document:", error.message);
+    console.error("   Error code:", error.code);
+    console.error("   Error name:", error.name);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
@@ -104,10 +104,12 @@ router.post('/', isOptionalAuth, async (req, res) => {
  * PATCH /api/v1/course-plan-docs/:id
  * Update an existing course plan document
  */
-router.patch('/:id', isOptionalAuth, async (req, res) => {
+router.patch("/:id", isOptionalAuth, async (req, res) => {
   try {
-    console.log(`📝 Update Course Plan Doc - Request received for ID: ${req.params.id}`);
-    
+    console.log(
+      `📝 Update Course Plan Doc - Request received for ID: ${req.params.id}`,
+    );
+
     const { id } = req.params;
     const updates = req.body;
 
@@ -119,25 +121,27 @@ router.patch('/:id', isOptionalAuth, async (req, res) => {
       console.log(`❌ Document not found: ${id}`);
       return res.status(404).json({
         success: false,
-        message: 'Course plan document not found'
+        message: "Course plan document not found",
       });
     }
-    
-    console.log(`📝 Found document: ${doc.coursePlanName} (${doc.versionType} v${doc.versionNumber})`);
+
+    console.log(
+      `📝 Found document: ${doc.coursePlanName} (${doc.versionType} v${doc.versionNumber})`,
+    );
 
     // Update allowed fields
     const allowedUpdates = [
-      'title', 
-      'content', 
-      'coursePlanName', 
-      'teacherInfo', 
-      'tags', 
-      'metadata'
+      "title",
+      "content",
+      "coursePlanName",
+      "teacherInfo",
+      "tags",
+      "metadata",
     ];
 
-    allowedUpdates.forEach(field => {
+    allowedUpdates.forEach((field) => {
       if (updates[field] !== undefined) {
-        if (field === 'metadata') {
+        if (field === "metadata") {
           // Merge metadata instead of replacing
           doc.metadata = { ...doc.metadata, ...updates.metadata };
         } else {
@@ -154,19 +158,18 @@ router.patch('/:id', isOptionalAuth, async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Course plan document updated successfully',
+      message: "Course plan document updated successfully",
       data: {
-        _id: updated._id
-      }
+        _id: updated._id,
+      },
     });
-
   } catch (error) {
-    console.error('❌ Error updating course plan document:', error.message);
-    console.error('   Document ID:', req.params.id);
+    console.error("❌ Error updating course plan document:", error.message);
+    console.error("   Document ID:", req.params.id);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
@@ -175,20 +178,20 @@ router.patch('/:id', isOptionalAuth, async (req, res) => {
  * GET /api/v1/course-plan-docs
  * Get all course plan documents for the current user (with pagination and filtering)
  */
-router.get('/', isOptionalAuth, async (req, res) => {
+router.get("/", isOptionalAuth, async (req, res) => {
   try {
-    console.log('📋 Get Course Plan Docs - Request received');
-    
+    console.log("📋 Get Course Plan Docs - Request received");
+
     const {
       page = 1,
       limit = 20,
       status,
       coursePlanName,
       userName,
-      sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = req.query;
-    
+
     // NEW: Extract additional query params
     const sessionIdParam = req.query.sessionId;
     const versionTypeParam = req.query.versionType;
@@ -196,16 +199,16 @@ router.get('/', isOptionalAuth, async (req, res) => {
     console.log(`📋 Query params:`, {
       page,
       limit,
-      userName: userName || 'any',
-      coursePlanName: coursePlanName || 'any',
-      sessionId: sessionIdParam || 'any',
-      versionType: versionTypeParam || 'any',
-      status: status || 'any'
+      userName: userName || "any",
+      coursePlanName: coursePlanName || "any",
+      sessionId: sessionIdParam || "any",
+      versionType: versionTypeParam || "any",
+      status: status || "any",
     });
 
     // Build query
     const query = {};
-    
+
     // Filter by userName if provided, otherwise by userId
     // If neither is provided, show all documents (for anonymous access)
     if (userName) {
@@ -217,33 +220,33 @@ router.get('/', isOptionalAuth, async (req, res) => {
     } else {
       console.log(`📋 No user filter - showing all documents`);
     }
-    
+
     // NEW: Filter by sessionId to get all related documents
     if (sessionIdParam) {
       query.sessionId = sessionIdParam;
       console.log(`📋 Filtering by sessionId: ${sessionIdParam}`);
     }
-    
+
     // NEW: Filter by versionType
     if (versionTypeParam) {
       query.versionType = versionTypeParam;
       console.log(`📋 Filtering by versionType: ${versionTypeParam}`);
     }
-    
+
     if (status) {
       query.status = status;
       console.log(`📋 Filtering by status: ${status}`);
     }
     if (coursePlanName) {
-      query.coursePlanName = new RegExp(coursePlanName, 'i');
+      query.coursePlanName = new RegExp(coursePlanName, "i");
       console.log(`📋 Filtering by coursePlanName: ${coursePlanName}`);
     }
-    
+
     console.log(`📋 Final query:`, JSON.stringify(query));
 
     // Calculate pagination
     const skip = (page - 1) * limit;
-    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+    const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
     // Execute query
     const [docs, total] = await Promise.all([
@@ -252,7 +255,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
         .skip(skip)
         .limit(parseInt(limit))
         .lean(),
-      CoursePlanDoc.countDocuments(query)
+      CoursePlanDoc.countDocuments(query),
     ]);
 
     console.log(`✅ Found ${docs.length} documents (total: ${total})`);
@@ -263,7 +266,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
         userName: docs[0].userName,
         sessionId: docs[0].sessionId,
         versionType: docs[0].versionType,
-        versionNumber: docs[0].versionNumber
+        versionNumber: docs[0].versionNumber,
       });
     }
 
@@ -276,16 +279,15 @@ router.get('/', isOptionalAuth, async (req, res) => {
         page: parseInt(page),
         limit: parseInt(limit),
         total,
-        pages: Math.ceil(total / limit)
-      }
+        pages: Math.ceil(total / limit),
+      },
     });
-
   } catch (error) {
-    console.error('❌ Error getting course plan documents:', error.message);
+    console.error("❌ Error getting course plan documents:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
@@ -294,10 +296,10 @@ router.get('/', isOptionalAuth, async (req, res) => {
  * GET /api/v1/course-plan-docs/:id
  * Get a specific course plan document by ID
  */
-router.get('/:id', isOptionalAuth, async (req, res) => {
+router.get("/:id", isOptionalAuth, async (req, res) => {
   try {
     console.log(`📋 Get Course Plan Doc by ID: ${req.params.id}`);
-    
+
     const { id } = req.params;
 
     const doc = await CoursePlanDoc.findById(id).lean();
@@ -306,23 +308,24 @@ router.get('/:id', isOptionalAuth, async (req, res) => {
       console.log(`❌ Document not found: ${id}`);
       return res.status(404).json({
         success: false,
-        message: 'Course plan document not found'
+        message: "Course plan document not found",
       });
     }
 
-    console.log(`✅ Document found: ${doc.coursePlanName} (${doc.versionType} v${doc.versionNumber})`);
+    console.log(
+      `✅ Document found: ${doc.coursePlanName} (${doc.versionType} v${doc.versionNumber})`,
+    );
 
     res.status(200).json({
       success: true,
-      data: doc
+      data: doc,
     });
-
   } catch (error) {
-    console.error('❌ Error getting course plan document:', error.message);
+    console.error("❌ Error getting course plan document:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
@@ -331,10 +334,12 @@ router.get('/:id', isOptionalAuth, async (req, res) => {
  * DELETE /api/v1/course-plan-docs/:id
  * Delete a course plan document
  */
-router.delete('/:id', isOptionalAuth, async (req, res) => {
+router.delete("/:id", isOptionalAuth, async (req, res) => {
   try {
-    console.log(`🗑️ Delete Course Plan Doc - Request received for ID: ${req.params.id}`);
-    
+    console.log(
+      `🗑️ Delete Course Plan Doc - Request received for ID: ${req.params.id}`,
+    );
+
     const { id } = req.params;
 
     const doc = await CoursePlanDoc.findById(id);
@@ -343,10 +348,10 @@ router.delete('/:id', isOptionalAuth, async (req, res) => {
       console.log(`❌ Document not found: ${id}`);
       return res.status(404).json({
         success: false,
-        message: 'Course plan document not found'
+        message: "Course plan document not found",
       });
     }
-    
+
     console.log(`📋 Deleting document: ${doc.coursePlanName}`);
 
     // Optional: Check if user owns this document
@@ -363,15 +368,14 @@ router.delete('/:id', isOptionalAuth, async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Course plan document deleted successfully'
+      message: "Course plan document deleted successfully",
     });
-
   } catch (error) {
-    console.error('❌ Error deleting course plan document:', error.message);
+    console.error("❌ Error deleting course plan document:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
@@ -380,12 +384,12 @@ router.delete('/:id', isOptionalAuth, async (req, res) => {
  * GET /api/v1/course-plan-docs/stats/summary
  * Get summary statistics for course plan documents
  */
-router.get('/stats/summary', isOptionalAuth, async (req, res) => {
+router.get("/stats/summary", isOptionalAuth, async (req, res) => {
   try {
-    console.log('📊 Get Course Plan Stats - Request received');
-    
+    console.log("📊 Get Course Plan Stats - Request received");
+
     const { userName } = req.query;
-    
+
     const query = {};
     if (userName) {
       query.userName = userName;
@@ -402,45 +406,45 @@ router.get('/stats/summary', isOptionalAuth, async (req, res) => {
           _id: null,
           totalDocuments: { $sum: 1 },
           originalCount: {
-            $sum: { $cond: [{ $eq: ['$versionType', 'original'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ["$versionType", "original"] }, 1, 0] },
           },
           analysisCount: {
-            $sum: { $cond: [{ $eq: ['$versionType', 'analysis'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ["$versionType", "analysis"] }, 1, 0] },
           },
           revisionCount: {
-            $sum: { $cond: [{ $eq: ['$versionType', 'revision'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ["$versionType", "revision"] }, 1, 0] },
           },
           avgAnalysisTokens: {
             $avg: {
               $cond: [
-                { $eq: ['$versionType', 'analysis'] },
-                '$metadata.tokenUsage.totalTokens',
-                null
-              ]
-            }
+                { $eq: ["$versionType", "analysis"] },
+                "$metadata.tokenUsage.totalTokens",
+                null,
+              ],
+            },
           },
           avgRevisionTokens: {
             $avg: {
               $cond: [
-                { $eq: ['$versionType', 'revision'] },
-                '$metadata.tokenUsage.totalTokens',
-                null
-              ]
-            }
-          }
-        }
-      }
+                { $eq: ["$versionType", "revision"] },
+                "$metadata.tokenUsage.totalTokens",
+                null,
+              ],
+            },
+          },
+        },
+      },
     ]);
 
     const versionTypeBreakdown = await CoursePlanDoc.aggregate([
       { $match: query },
       {
         $group: {
-          _id: '$versionType',
-          count: { $sum: 1 }
-        }
+          _id: "$versionType",
+          count: { $sum: 1 },
+        },
       },
-      { $sort: { count: -1 } }
+      { $sort: { count: -1 } },
     ]);
 
     const overall = stats[0] || {
@@ -449,29 +453,31 @@ router.get('/stats/summary', isOptionalAuth, async (req, res) => {
       analysisCount: 0,
       revisionCount: 0,
       avgAnalysisTokens: 0,
-      avgRevisionTokens: 0
+      avgRevisionTokens: 0,
     };
 
-    console.log(`✅ Stats retrieved: ${overall.totalDocuments} total documents`);
-    console.log(`   Original: ${overall.originalCount}, Analysis: ${overall.analysisCount}, Revision: ${overall.revisionCount}`);
+    console.log(
+      `✅ Stats retrieved: ${overall.totalDocuments} total documents`,
+    );
+    console.log(
+      `   Original: ${overall.originalCount}, Analysis: ${overall.analysisCount}, Revision: ${overall.revisionCount}`,
+    );
 
     res.status(200).json({
       success: true,
       data: {
         overall,
-        versionTypeBreakdown
-      }
+        versionTypeBreakdown,
+      },
     });
-
   } catch (error) {
-    console.error('❌ Error getting course plan stats:', error.message);
+    console.error("❌ Error getting course plan stats:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message
+      message: "Internal server error",
+      error: error.message,
     });
   }
 });
 
 module.exports = router;
-
