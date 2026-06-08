@@ -359,15 +359,93 @@ Agentic RAG = planner + retrieval engine + grader
 
 ## 14. Context Grader trong Agentic RAG
 
-Sau khi có candidate chunks, context grader dùng LLM để đánh giá chunk nào thật sự phù hợp với request feedback.
+Sau khi có candidate chunks, context grader dùng LLM để đánh giá chunk nào thật sự phù hợp với request feedback. Đây là bước phân biệt quan trọng giữa `hybrid` và `agentic`: hybrid chỉ xếp hạng bằng điểm retrieval, còn agentic có thêm một lớp đánh giá ngữ cảnh bằng mô hình ngôn ngữ.
 
-Grader có thể xem xét:
+Trong implementation hiện tại, grader được hướng dẫn bằng prompt sau:
 
-- chunk có liên quan đến task/rubric không;
-- chunk có giúp sinh feedback cụ thể hơn không;
-- chunk có phù hợp với ngôn ngữ/bối cảnh không;
-- chunk có quá chung chung không;
-- chunk có nguy cơ làm feedback lệch khỏi bài nộp không.
+```text
+You are a strict RAG context grader for educational feedback.
+Select only chunks that can help evaluate the submission or ground policy/rubric/pedagogical claims.
+Return JSON only with {"keep":[{"id":"chunk id","relevanceScore":0-5,"reason":"short"}]}
+```
+
+Như vậy, tiêu chí chính của context grader là:
+
+> Chỉ giữ các chunk có thể giúp đánh giá bài nộp hoặc làm cơ sở cho các nhận định liên quan đến chính sách, rubric hoặc nguyên tắc sư phạm.
+
+Grader không chấm nhiều tiêu chí tách riêng như `grounding`, `rubric alignment`, `actionability` hay `language consistency`. Thay vào đó, nó trả về một điểm tổng duy nhất:
+
+```text
+relevanceScore: 0-5
+```
+
+Ý nghĩa thực tế của điểm này có thể hiểu như sau:
+
+| Điểm | Diễn giải |
+| --- | --- |
+| 0 | Không liên quan tới task, criteria hoặc submission |
+| 1 | Liên quan rất yếu, quá chung chung hoặc khó dùng cho feedback |
+| 2 | Có liên quan bề mặt nhưng không đủ hữu ích để đưa vào prompt |
+| 3 | Đủ liên quan để hỗ trợ đánh giá hoặc grounding |
+| 4 | Rõ ràng hữu ích cho feedback, rubric hoặc pedagogical claim |
+| 5 | Rất phù hợp, nên ưu tiên đưa vào retrieved context |
+
+Khi chấm, grader được cung cấp các thông tin sau từ request:
+
+```text
+Task
+Description
+Criteria
+Submission excerpt
+```
+
+Với mỗi candidate chunk, grader nhận:
+
+```text
+id
+title
+section title
+chunk text, tối đa khoảng 900 ký tự
+```
+
+Output mong đợi của grader có dạng:
+
+```json
+{
+  "keep": [
+    {
+      "id": "chunk-id",
+      "relevanceScore": 4,
+      "reason": "Relevant to rubric-aligned formative feedback."
+    }
+  ]
+}
+```
+
+Sau khi grader trả kết quả, hệ thống chỉ giữ các chunk có:
+
+```text
+relevanceScore >= 3
+```
+
+Các chunk dưới 3 điểm bị loại. Sau đó hệ thống giới hạn số lượng chunk:
+
+```text
+Tối đa 8 chunk sau bước grading
+Tối đa khoảng 6 chunk khi trả về cho agentic RAG context
+```
+
+Nếu grader không chạy được, lỗi model/API, hoặc không có chunk nào được giữ lại, hệ thống fallback về các chunk hybrid có điểm cao nhất. Cơ chế fallback này giúp agentic mode không làm hỏng toàn bộ feedback generation khi bước grading gặp lỗi.
+
+Có thể tóm tắt logic context grader như sau:
+
+```text
+Candidate chunks từ multi-query hybrid retrieval
+  -> LLM grader đánh giá relevanceScore 0-5
+  -> giữ chunk có relevanceScore >= 3
+  -> gắn reason từ grader vào retrieved context
+  -> đưa các chunk đã lọc vào prompt sinh feedback
+```
 
 Model grader được chọn theo thứ tự:
 
@@ -378,7 +456,7 @@ RAG_GRADER_MODEL
 gpt-5.4-mini
 ```
 
-Kết quả cuối cùng là một danh sách chunk đã được lọc và/hoặc rank lại. Những chunk này mới được đưa vào prompt sinh feedback.
+Kết quả cuối cùng là một danh sách chunk đã được lọc và/hoặc rank lại. Những chunk này mới được đưa vào prompt sinh feedback. Vì vậy, trong báo cáo nên mô tả context grader là một bước **relevance grading có kiểm soát**, không phải một evaluator đầy đủ của chất lượng feedback.
 
 ## 15. Vì sao Agentic RAG có thể tốt hơn Hybrid RAG?
 
