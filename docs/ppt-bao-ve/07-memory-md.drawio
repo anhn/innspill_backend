@@ -1,0 +1,43 @@
+<mxfile host="app.diagrams.net" modified="2026-06-11T10:00:00.000Z" agent="InnSpill" version="22.0.0" type="device">
+  <diagram id="mem" name="Memory MD">
+    <mxGraphModel dx="1100" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="500" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="MARKDOWN MEMORY — TRI THỨC CÓ THỂ SỬA" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="150" y="20" width="700" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="md" value="rag-memory/&#10;feedback-generation-memory.md" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1e293b;strokeColor=#0f172a;fontSize=14;fontStyle=1;fontColor=#e2e8f0;fontFamily=Courier New;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="load" value="Load runtime&#10;• Quét *.md&#10;• Bỏ qua file bắt đầu _&#10;• Chia theo heading&#10;• Signature cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="100" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="rag" value="Gắn vào RAG store&#10;• Hybrid scoring&#10;• Markdown memory boost" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="680" y="100" width="240" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="learn" value="Auto-learn từ harness&#10;RAG_LEARN_TO_MARKDOWN=true" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="280" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="out" value="Inject vào prompt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#7f1d1d;" vertex="1" parent="1">
+          <mxGeometry x="680" y="280" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" style="endArrow=classic;html=1;" edge="1" parent="1" source="md" target="load">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" style="endArrow=classic;html=1;" edge="1" parent="1" source="load" target="rag">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" style="endArrow=classic;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="load" target="learn">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" style="endArrow=classic;html=1;" edge="1" parent="1" source="rag" target="out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="Sửa file xong, lần chạy sau tự áp dụng. Không cần rebuild embedding." style="text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=2;align=center;fontColor=#4b5563;" vertex="1" parent="1">
+          <mxGeometry x="100" y="420" width="800" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

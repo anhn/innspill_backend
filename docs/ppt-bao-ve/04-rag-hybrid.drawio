@@ -1,0 +1,55 @@
+<mxfile host="app.diagrams.net" modified="2026-06-11T10:00:00.000Z" agent="InnSpill" version="22.0.0" type="device">
+  <diagram id="rag-h" name="RAG Hybrid">
+    <mxGraphModel dx="1100" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="600" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="HYBRID RAG — 3 TÍN HIỆU" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="150" y="20" width="700" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="q" value="Query từ request" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3f4f6;strokeColor=#9ca3af;strokeWidth=2;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="100" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="v" value="Vector score&#10;embedding" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;strokeWidth=2;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="80" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="l" value="Lexical score&#10;keyword match" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;strokeWidth=2;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="180" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="b" value="Metadata boost&#10;language / country / org" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;strokeWidth=2;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="280" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f" value="0.6 × vector&#10;+ 0.28 × lexical&#10;+ boost" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;strokeWidth=2;fontSize=15;fontStyle=1;fontColor=#7f1d1d;" vertex="1" parent="1">
+          <mxGeometry x="680" y="160" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="out" value="Top-k chunks&#10;→ inject vào prompt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;strokeWidth=2;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="680" y="380" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" style="endArrow=classic;html=1;" edge="1" parent="1" source="q" target="v">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" style="endArrow=classic;html=1;" edge="1" parent="1" source="q" target="l">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" style="endArrow=classic;html=1;" edge="1" parent="1" source="q" target="b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" style="endArrow=classic;html=1;" edge="1" parent="1" source="v" target="f">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a5" style="endArrow=classic;html=1;" edge="1" parent="1" source="l" target="f">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a6" style="endArrow=classic;html=1;" edge="1" parent="1" source="b" target="f">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a7" style="endArrow=classic;html=1;" edge="1" parent="1" source="f" target="out">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note" value="Vector bắt nghĩa rộng · Lexical bám từ khoá · Metadata ưu tiên đúng ngữ cảnh" style="text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=2;align=center;fontColor=#4b5563;" vertex="1" parent="1">
+          <mxGeometry x="100" y="510" width="800" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

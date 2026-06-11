@@ -1,0 +1,147 @@
+<mxfile host="65bd71144e">
+    <diagram id="agentic-rag-flow" name="Controlled Agentic Hybrid RAG">
+        <mxGraphModel dx="3320" dy="1433" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1120" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="InnSpill Controlled Agentic Hybrid RAG Flow" style="text;html=1;fontSize=24;fontStyle=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;" parent="1" vertex="1">
+                    <mxGeometry x="440" y="30" width="920" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="lane-legacy" value="legacy" style="swimlane;html=1;startSize=28;fillColor=#fdf2f2;strokeColor=#e6b8b7;fontStyle=1;fontSize=13;horizontal=1;rounded=0;collapsible=0;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="70" width="1410" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="store" value="Current RAG Store&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;RagDocument.normalized.jsonl&lt;br&gt;RagDocument.embeddings.json&lt;/font&gt;" style="shape=cylinder3d;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontStyle=1;" parent="lane-legacy" vertex="1">
+                    <mxGeometry x="695" y="80" width="290" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="future" value="Future Backend Target&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;Markdown source -&amp;gt; chunks -&amp;gt; MongoDB Atlas Vector Search&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontStyle=1;" parent="lane-legacy" vertex="1">
+                    <mxGeometry x="1030" y="30" width="320" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="e15" value="later migration" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=open;dashed=1;strokeWidth=3;strokeColor=#666666;labelBackgroundColor=#ffffff;" parent="lane-legacy" source="future" target="store" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="lane-hybrid" value="hybrid" style="swimlane;html=1;startSize=28;fillColor=#f3fbf2;strokeColor=#b6d7a8;fontStyle=1;fontSize=13;horizontal=1;rounded=0;collapsible=0;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="390" width="1440" height="650" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#dc2626;strokeWidth=3;dashed=1;" vertex="1" parent="lane-hybrid">
+                    <mxGeometry x="170" y="-30" width="1270" height="680" as="geometry"/>
+                </mxCell>
+                <mxCell id="lane-agentic" value="agentic" style="swimlane;html=1;startSize=28;fillColor=#fff7ec;strokeColor=#f6b26b;fontStyle=1;fontSize=13;horizontal=1;rounded=0;collapsible=0;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="630" width="1410" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="request" value="Feedback Request&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;submission + task + rubric + learning objectives&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry y="190" width="220" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="settings" value="Feedback Settings&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;ragMode: legacy | hybrid | agentic&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry y="320" width="220" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="switch" value="RAG Mode Switch" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="350" y="240" width="160" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="legacy" value="legacy&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;No new retrieved context&lt;br&gt;old behavior preserved&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="610" y="165" width="240" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="hybrid-query" value="hybrid&lt;br&gt;Build Deterministic Query&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;task + criteria + LO + submission excerpt&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="610" y="420" width="260" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="agent-planner" value="agentic&lt;br&gt;QueryPlannerAgent&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;returns JSON queries + filters only&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="610" y="700" width="260" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="hybrid-retrieve" value="Hybrid Retrieval&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;0.6 vector + 0.28 lexical + metadata boost&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1000" y="420" width="280" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="grader" value="ContextGraderAgent&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;agentic only&lt;br&gt;keeps relevant chunks, JSON only&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1000" y="700" width="280" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="context" value="Formatted Retrieved Context&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;&amp;lt;retrieved_context mode=&quot;...&quot;&amp;gt;&lt;br&gt;sources + scores + reasons + chunk text&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2f0d9;strokeColor=#70ad47;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1380" y="500" width="310" height="105" as="geometry"/>
+                </mxCell>
+                <mxCell id="agent" value="FeedbackGenerationAgent&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;existing JSON feedback schema preserved&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1380" y="715" width="310" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="output" value="Generated Feedback + Debug&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;feedback fields + scores&lt;br&gt;optional ragSources / ragDebug&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d9ead3;strokeColor=#6aa84f;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1380" y="930" width="310" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#6c8ebf;" parent="1" source="request" target="switch" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#9673a6;" parent="1" source="settings" target="switch" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" value="legacy" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#b85450;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="switch" target="legacy" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="540" y="210"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e4" value="hybrid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#82b366;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="switch" target="hybrid-query" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="540" y="465"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e5" value="agentic" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#d79b00;fontStyle=1;labelBackgroundColor=#ffffff;" parent="1" source="switch" target="agent-planner" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="540" y="745"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#82b366;" parent="1" source="hybrid-query" target="hybrid-retrieve" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#d79b00;" parent="1" source="agent-planner" target="hybrid-retrieve" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="910" y="745"/>
+                            <mxPoint x="910" y="540"/>
+                            <mxPoint x="1140" y="540"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e8" value="chunks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#666666;labelBackgroundColor=#ffffff;" parent="1" source="store" target="hybrid-retrieve" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e9" value="agentic candidates" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#d79b00;labelBackgroundColor=#ffffff;" parent="1" source="hybrid-retrieve" target="grader" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1140" y="620"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e10" value="hybrid chunks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#82b366;labelBackgroundColor=#ffffff;" parent="1" source="hybrid-retrieve" target="context" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1330" y="465"/>
+                            <mxPoint x="1330" y="553"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e11" value="graded chunks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#d79b00;labelBackgroundColor=#ffffff;" parent="1" source="grader" target="context" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1330" y="745"/>
+                            <mxPoint x="1330" y="553"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e12" value="no retrieved context" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#b85450;labelBackgroundColor=#ffffff;" parent="1" source="legacy" target="agent" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="910" y="210"/>
+                            <mxPoint x="910" y="860"/>
+                            <mxPoint x="1535" y="860"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e13" value="retrieved context" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#70ad47;labelBackgroundColor=#ffffff;" parent="1" source="context" target="agent" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeWidth=3;strokeColor=#6aa84f;" parent="1" source="agent" target="output" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
