@@ -3,7 +3,7 @@
 
 const path = require('node:path');
 const OpenAI = require('openai');
-const { connectDatabase, disconnectDatabase } = require('../src/config/database');
+const { connectDB, mongoose } = require('../src/config/database');
 const Submission = require('../src/models/Submission');
 const { loadFeedbackRecords } = require('./lib/feedback-embeddings/loader');
 const { embedAll } = require('./lib/feedback-embeddings/embedder');
@@ -37,7 +37,7 @@ async function main() {
 
   console.log(`[rebuild] model=${EMBEDDING_MODEL} dryRun=${dryRun} limit=${limit === null ? 'none' : limit}`);
 
-  await connectDatabase();
+  await connectDB();
   console.log('[rebuild] Connected to MongoDB');
 
   const { records, submissionsScanned } = await loadFeedbackRecords({ today, limit, SubmissionModel: Submission });
@@ -45,7 +45,7 @@ async function main() {
 
   if (records.length === 0) {
     console.log(JSON.stringify({ ok: true, scanned: submissionsScanned, kept: 0, embedded: 0, failed: 0, durationMs: Date.now() - startMs }));
-    await disconnectDatabase();
+    try { await mongoose.connection.close(); } catch (_) { /* ignore */ }
     return;
   }
 
@@ -75,11 +75,11 @@ async function main() {
     failed: failed.length,
     durationMs: Date.now() - startMs,
   }));
-  await disconnectDatabase();
+  try { await mongoose.connection.close(); } catch (_) { /* ignore */ }
 }
 
 main().catch(async (err) => {
   console.error('[rebuild] Fatal:', err.stack || err.message);
-  try { await disconnectDatabase(); } catch (_) { /* ignore */ }
+  try { await mongoose.connection.close(); } catch (_) { /* ignore */ }
   process.exit(1);
 });
