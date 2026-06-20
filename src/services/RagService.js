@@ -277,7 +277,7 @@ class RagService {
 
   static loadNormalized() {
     if (this.normalizedCache) return this.normalizedCache;
-    const file = path.join(__dirname, '..', 'models', 'RagDocument.normalized.jsonl');
+    const file = path.join(__dirname, '..', 'models', 'FeedbackEmbeddings.normalized.jsonl');
     try {
       const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean);
       this.normalizedCache = lines.map((line) => JSON.parse(line)).filter((item) => item && item.id);
@@ -290,7 +290,7 @@ class RagService {
 
   static loadEmbeddings() {
     if (this.embeddingCache) return this.embeddingCache;
-    const file = path.join(__dirname, '..', 'models', 'RagDocument.embeddings.json');
+    const file = path.join(__dirname, '..', 'models', 'FeedbackEmbeddings.json');
     try {
       const items = JSON.parse(fs.readFileSync(file, 'utf8'));
       this.embeddingCache = Array.isArray(items) ? items : [];
