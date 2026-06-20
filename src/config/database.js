@@ -57,4 +57,18 @@ async function gracefulExit() {
 
 process.on("SIGINT", gracefulExit).on("SIGTERM", gracefulExit);
 
-module.exports = { mongoose, connectDB };
+// Aliases for scripts that want symmetric connect/disconnect helpers.
+async function connectDatabase() {
+  return connectDB();
+}
+
+async function disconnectDatabase() {
+  try {
+    await mongoose.connection.close();
+  } catch (err) {
+    console.error("❌ MongoDB disconnect error:", err.message);
+    throw err;
+  }
+}
+
+module.exports = { mongoose, connectDB, connectDatabase, disconnectDatabase };
