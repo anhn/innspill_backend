@@ -6,14 +6,14 @@ async function loadFeedbackRecords({ today, limit = null, SubmissionModel }) {
   if (!SubmissionModel) {
     throw new Error('loadFeedbackRecords: SubmissionModel is required');
   }
-  const query = SubmissionModel.find(
+  const cursor = SubmissionModel.find(
     { 'feedbackHistory.0': { $exists: true } },
     'taskId studentId feedbackHistory'
-  ).lean();
+  ).lean().cursor();
 
   const records = [];
   let submissionsScanned = 0;
-  for await (const submission of query) {
+  for await (const submission of cursor) {
     submissionsScanned += 1;
     const history = submission.feedbackHistory || [];
     for (let i = 0; i < history.length; i += 1) {

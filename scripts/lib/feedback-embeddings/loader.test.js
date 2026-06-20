@@ -10,8 +10,12 @@ function makeFakeModel(submissions) {
       return {
         lean() {
           return {
-            async *[Symbol.asyncIterator]() {
-              for (const s of submissions) yield s;
+            cursor() {
+              return {
+                async *[Symbol.asyncIterator]() {
+                  for (const s of submissions) yield s;
+                },
+              };
             },
           };
         },
