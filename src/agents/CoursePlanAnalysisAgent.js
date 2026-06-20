@@ -35,7 +35,7 @@ Rules:
   static loadRag() {
     if (this.ragCache) return this.ragCache;
     try {
-      const file = path.join(__dirname, '..', 'models', 'RagDocument.normalized.jsonl');
+      const file = path.join(__dirname, '..', 'models', 'FeedbackEmbeddings.normalized.jsonl');
       const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean);
       this.ragCache = lines.map(l => JSON.parse(l)).filter(o => o.chunk_text);
     } catch (e) {
@@ -48,7 +48,7 @@ Rules:
   static loadEmbeddings() {
     if (this.embeddingsCache) return this.embeddingsCache;
     try {
-      const file = path.join(__dirname, '..', 'models', 'RagDocument.embeddings.json');
+      const file = path.join(__dirname, '..', 'models', 'FeedbackEmbeddings.json');
       const items = JSON.parse(fs.readFileSync(file, 'utf8'));
       const rag = this.loadRag();
       const byId = new Map();
