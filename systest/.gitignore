@@ -1,0 +1,4 @@
+node_modules/
+package-lock.json
+results/backend.log
+results/mock-openai-calls.jsonl

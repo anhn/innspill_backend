@@ -8,8 +8,10 @@ const AILiteracyStatus = require('../models/AILiteracyStatus');
 const ChatSession = require('../models/ChatSession');
 const QuizSubmission = require('../models/QuizSubmission');
 const Prompt = require('../models/Prompt');
-const { isOptionalAuth } = require('../middleware/auth');
+const { isOptionalAuth, requireRole } = require('../middleware/auth');
 const Joi = require('joi');
+
+router.use(requireRole('teacher', 'admin', 'school'));
 
 // Module mapping: action types to modules
 const MODULE_MAPPING = {
@@ -69,9 +71,8 @@ function getDateRange(period, startDate, endDate) {
     throw new Error('Invalid period');
   }
 
-  // Set to start/end of day
-  start.setHours(0, 0, 0, 0);
-  end.setHours(23, 59, 59, 999);
+  start.setUTCHours(0, 0, 0, 0);
+  end.setUTCHours(23, 59, 59, 999);
 
   return { start, end };
 }
@@ -80,16 +81,19 @@ function getDateRange(period, startDate, endDate) {
 function generateDailyBreakdown(start, end, dataMap) {
   const breakdown = [];
   const current = new Date(start);
-  
-  while (current <= end) {
+  current.setUTCHours(0, 0, 0, 0);
+  const endDay = new Date(end);
+  endDay.setUTCHours(0, 0, 0, 0);
+
+  while (current <= endDay) {
     const dateStr = current.toISOString().split('T')[0];
     breakdown.push({
       date: dateStr,
       ...(dataMap[dateStr] || {})
     });
-    current.setDate(current.getDate() + 1);
+    current.setUTCDate(current.getUTCDate() + 1);
   }
-  
+
   return breakdown;
 }
 
@@ -1310,7 +1314,7 @@ router.get('/activity/quiz-completions', isOptionalAuth, async (req, res) => {
     })
       .sort({ submittedAt: sortOrder, createdAt: sortOrder })
       .limit(value.limit * 2) // Get more to group by user
-      .populate('quizId', 'title')
+      .populate('quizId', 'name')
       .select('studentId quizId submittedAt score')
       .lean();
 
@@ -1344,7 +1348,7 @@ router.get('/activity/quiz-completions', isOptionalAuth, async (req, res) => {
         userId: submission.studentId?.toString() || null,
         username: submission.studentId?.toString() || null, // Will be populated below if possible
         quizId: submission.quizId?._id?.toString() || submission.quizId?.toString() || null,
-        quizTitle: submission.quizId?.title || null,
+        quizTitle: submission.quizId?.name || null,
         timestamp: new Date(submission.submittedAt || submission.createdAt).toISOString(),
         score: submission.score || null
       }));

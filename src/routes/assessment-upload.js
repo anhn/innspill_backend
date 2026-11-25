@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { isOptionalAuth } = require('../middleware/auth');
+const { isAuthenticated } = require('../middleware/auth');
+const { assessmentUploadFileFilter } = require('../utils/uploadSecurity');
 const path = require('path');
 const fs = require('fs');
 
@@ -34,18 +35,12 @@ if (multer) {
   }
 });
 
-// File filter
-const fileFilter = (req, file, cb) => {
-  // Accept all file types for now (can be restricted later)
-  cb(null, true);
-};
-
   upload = multer({
     storage: storage,
     limits: {
       fileSize: 10 * 1024 * 1024 // 10MB limit
     },
-    fileFilter: fileFilter
+    fileFilter: assessmentUploadFileFilter
   });
 } else {
   // Fallback: create a dummy upload middleware
@@ -63,7 +58,17 @@ const fileFilter = (req, file, cb) => {
  * POST /api/v1/assessment/upload
  * Upload attachment file
  */
-router.post('/', isOptionalAuth, upload.single('file'), async (req, res) => {
+router.post('/', isAuthenticated, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, message: 'File too large' });
+      }
+      return res.status(400).json({ success: false, message: err.message || 'Upload rejected' });
+    }
+    return next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({

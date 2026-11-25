@@ -29,9 +29,11 @@ const studentGroupSchema = new mongoose.Schema({
     required: true,
     validate: {
       validator: function(v) {
-        return Array.isArray(v) && v.length >= 2;
+        if (!Array.isArray(v)) return false;
+        if (!this.isActive) return true;
+        return v.length >= 2;
       },
-      message: 'Group must have at least 2 students'
+      message: 'Active group must have at least 2 students'
     }
   },
   createdBy: {

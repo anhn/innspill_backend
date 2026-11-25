@@ -6,6 +6,11 @@ const Quiz = require('../models/Quiz');
 const Project = require('../models/Project');
 const User = require('../models/User');
 const { isOptionalAuth } = require('../middleware/auth');
+const {
+  actingUsername,
+  actingRole,
+  isStaffRole,
+} = require('../middleware/requestIdentity');
 const Joi = require('joi');
 
 // Validation schemas
@@ -52,6 +57,13 @@ const updateQuizSubmissionSchema = Joi.object({
   submittedAt: Joi.date().iso().allow(null).optional(),
   startedAt: Joi.date().iso().optional()
 }).min(1);
+
+function mixedToPlain(value) {
+  if (!value) return {};
+  if (value instanceof Map) return Object.fromEntries(value);
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  return {};
+}
 
 /**
  * Helper function to calculate score from answers
@@ -118,6 +130,14 @@ router.post('/', isOptionalAuth, async (req, res) => {
       });
     }
 
+    const self = actingUsername(req);
+    if (self && !isStaffRole(actingRole(req)) && value.studentId !== self) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden',
+      });
+    }
+
     // Validate quizId format
     if (!mongoose.Types.ObjectId.isValid(value.quizId)) {
       return res.status(400).json({
@@ -135,22 +155,15 @@ router.post('/', isOptionalAuth, async (req, res) => {
       });
     }
 
-    // Handle score differently for drafts vs submitted
-    let score = value.score;
+    let score = null;
     if (value.isSubmitted) {
-      // For submitted attempts: ensure we have a numeric score
-      if (score === undefined || score === null) {
-        score = await calculateScore(value.quizId, value.answers);
-        if (score === null) {
-          return res.status(500).json({
-            success: false,
-            message: 'Failed to calculate score'
-          });
-        }
+      score = await calculateScore(value.quizId, value.answers);
+      if (score === null) {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to calculate score'
+        });
       }
-    } else {
-      // Draft save: always keep score as null
-      score = null;
     }
 
     // Check if submission already exists
@@ -158,6 +171,13 @@ router.post('/', isOptionalAuth, async (req, res) => {
       quizId: value.quizId,
       studentId: value.studentId
     });
+
+    if (existingSubmission?.isSubmitted && value.isSubmitted) {
+      return res.status(409).json({
+        success: false,
+        message: 'Quiz already submitted and cannot be modified'
+      });
+    }
 
     let submission;
     if (existingSubmission) {
@@ -296,8 +316,8 @@ router.get('/student/:username', isOptionalAuth, async (req, res) => {
       courseId: submission.courseId,
       currentQuestionIndex: submission.currentQuestionIndex,
       lockedAnswers: submission.lockedAnswers || {},
-      answers: Object.fromEntries(submission.answers),
-      comments: Object.fromEntries(submission.comments),
+      answers: mixedToPlain(submission.answers),
+      comments: mixedToPlain(submission.comments),
       score: submission.score,
       isSubmitted: submission.isSubmitted,
       submittedAt: submission.submittedAt,
@@ -566,16 +586,17 @@ router.put('/:submissionId', isOptionalAuth, async (req, res) => {
       });
     }
 
-    // Update fields
+    const self = actingUsername(req);
+    if (self && !isStaffRole(actingRole(req)) && submission.studentId !== self) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden',
+      });
+    }
+
+    // Update fields (never trust client-provided score)
     if (value.answers !== undefined) {
       submission.answers = value.answers;
-      // Recalculate score if answers changed
-      if (value.score === undefined) {
-        const newScore = await calculateScore(submission.quizId, value.answers);
-        if (newScore !== null) {
-          submission.score = newScore;
-        }
-      }
     }
     if (value.comments !== undefined) {
       submission.comments = value.comments;
@@ -589,8 +610,15 @@ router.put('/:submissionId', isOptionalAuth, async (req, res) => {
     if (value.lockedAnswers !== undefined) {
       submission.lockedAnswers = value.lockedAnswers;
     }
-    if (value.score !== undefined) {
-      submission.score = value.score;
+    const answersForScore = submission.answers || {};
+    if (Object.keys(answersForScore).length > 0) {
+      const newScore = await calculateScore(
+        submission.quizId,
+        answersForScore,
+      );
+      if (newScore !== null) {
+        submission.score = newScore;
+      }
     }
     if (value.isSubmitted !== undefined) {
       submission.isSubmitted = value.isSubmitted;

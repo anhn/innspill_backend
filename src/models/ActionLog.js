@@ -53,6 +53,7 @@ const actionLogSchema = new mongoose.Schema(
         "lo-auto-map",
         "login",
         "logout",
+        "reset-review",
       ],
       index: true,
     },

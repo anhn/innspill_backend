@@ -4,6 +4,10 @@ const mongoose = require('mongoose');
 const AILiteracyStatus = require('../models/AILiteracyStatus');
 const User = require('../models/User');
 const { isOptionalAuth } = require('../middleware/auth');
+const {
+  forbidUserIdSpoof,
+  forbidStudentClassMetrics,
+} = require('../middleware/requestIdentity');
 const Joi = require('joi');
 
 // Validation schemas
@@ -34,6 +38,8 @@ router.post('/status', isOptionalAuth, async (req, res) => {
     if (!userId && req.session && req.session.userId) {
       userId = req.session.userId;
     }
+
+    if (userId && forbidUserIdSpoof(req, res, userId)) return;
 
     if (!userId) {
       return res.status(400).json({
@@ -141,6 +147,8 @@ router.get('/status/:userId', isOptionalAuth, async (req, res) => {
   try {
     const userId = req.params.userId;
 
+    if (forbidUserIdSpoof(req, res, userId)) return;
+
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({
         success: false,
@@ -217,6 +225,8 @@ router.get('/status', isOptionalAuth, async (req, res) => {
       userId = req.query.userId;
     }
 
+    if (userId && forbidUserIdSpoof(req, res, userId)) return;
+
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -290,6 +300,8 @@ router.get('/status', isOptionalAuth, async (req, res) => {
  */
 router.get('/stats', isOptionalAuth, async (req, res) => {
   try {
+    if (forbidStudentClassMetrics(req, res)) return;
+
     const schema = Joi.object({
       status: Joi.string().valid('not_started', 'in_progress', 'completed').optional(),
       minProgress: Joi.number().min(0).max(100).optional(),

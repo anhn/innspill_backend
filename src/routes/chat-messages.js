@@ -6,15 +6,17 @@ const Role = require('../models/Role');
 const Project = require('../models/Project');
 const User = require('../models/User');
 const StakeholderChatAgent = require('../agents/StakeholderChatAgent');
-const OpenAI = require('openai');
+const { getOpenAIClient, llmConfigured } = require('../services/openaiClient');
 const { isOptionalAuth } = require('../middleware/auth');
+const {
+  forbidIdentitySpoof,
+  resolveFilterUsername,
+} = require('../middleware/requestIdentity');
+const { enforceStudentIdBody } = require('../middleware/ownership');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 const Joi = require('joi');
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = llmConfigured() ? getOpenAIClient() : null;
 
 const MAX_BATCH_PAIRS = 20;
 
@@ -68,6 +70,7 @@ router.get('/student/:username/stakeholder/:stakeholderId', isOptionalAuth, asyn
 
     const username = req.params.username;
     const stakeholderId = req.params.stakeholderId;
+    if (forbidIdentitySpoof(req, res, username)) return;
 
     // Validate stakeholderId format
     if (!mongoose.Types.ObjectId.isValid(stakeholderId)) {
@@ -297,7 +300,7 @@ router.post('/batch', isOptionalAuth, async (req, res) => {
  * Send a chat message from student to stakeholder and receive AI-generated response
  * Creates a new session or adds to existing active session
  */
-router.post('/', isOptionalAuth, actionLoggingMiddleware('stakeholder-chat'), async (req, res) => {
+router.post('/', isOptionalAuth, enforceStudentIdBody('studentId'), actionLoggingMiddleware('stakeholder-chat'), async (req, res) => {
   try {
     const schema = Joi.object({
       studentId: Joi.string().required().trim().min(1),
@@ -355,8 +358,13 @@ router.post('/', isOptionalAuth, actionLoggingMiddleware('stakeholder-chat'), as
 
     // Find or create chat session
     let session;
-    if (value.sessionId && mongoose.Types.ObjectId.isValid(value.sessionId)) {
-      // Add to existing session
+    if (value.sessionId) {
+      if (!mongoose.Types.ObjectId.isValid(value.sessionId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid sessionId format'
+        });
+      }
       session = await ChatSession.findOne({
         _id: value.sessionId,
         stakeholderId: value.stakeholderId,

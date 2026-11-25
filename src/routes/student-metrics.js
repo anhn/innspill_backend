@@ -12,6 +12,13 @@ const LOMapping = require('../models/LOMapping');
 const StudentGroup = require('../models/StudentGroup');
 const User = require('../models/User');
 const { isOptionalAuth } = require('../middleware/auth');
+const {
+  resolveFilterUsername,
+  forbidIdentitySpoof,
+  forbidStudentClassMetrics,
+  isStaffRole,
+  actingRole,
+} = require('../middleware/requestIdentity');
 const Joi = require('joi');
 
 // Validation schemas
@@ -772,16 +779,23 @@ router.get('/progress-student', isOptionalAuth, async (req, res) => {
       });
     }
 
-    // Authorization: students can only view their own metrics
-    const targetStudentId = value.studentId || value.userName;
-    if (value.studentId && value.studentId !== value.userName) {
+    if (forbidIdentitySpoof(req, res, value.userName)) return;
+    const allowedUser = resolveFilterUsername(req, value.userName);
+    if (!allowedUser) {
       return res.status(403).json({
         success: false,
-        message: 'You can only view your own progress metrics'
+        message: 'Forbidden',
+      });
+    }
+  if (value.studentId && value.studentId !== allowedUser) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden',
       });
     }
 
     const scope = value.scope || 'both';
+    const targetStudentId = allowedUser;
 
     // Load project (for courseId) and tasks
     const project = await Project.findById(value.projectId);
@@ -1738,6 +1752,12 @@ router.get('/windowed', isOptionalAuth, async (req, res) => {
       });
     }
 
+    if (value.studentId) {
+      if (forbidIdentitySpoof(req, res, value.studentId)) return;
+    } else if (!isStaffRole(actingRole(req))) {
+      if (forbidStudentClassMetrics(req, res)) return;
+    }
+
     const tasks = await Task.find({ projectId: value.projectId });
     
     // Determine default date range if not provided
@@ -2080,6 +2100,11 @@ router.get('/progress-masterview', isOptionalAuth, async (req, res) => {
       });
     }
 
+    const masterviewTarget = value.studentId || value.userName;
+    if (masterviewTarget) {
+      if (forbidIdentitySpoof(req, res, masterviewTarget)) return;
+    } else if (forbidStudentClassMetrics(req, res)) return;
+
     // Calculate all metrics in parallel (AGGREGATED - all data, no window filtering)
     const [
       loPerformance,
@@ -2203,6 +2228,8 @@ router.get('/progress-masterview/grouped', isOptionalAuth, async (req, res) => {
         message: 'Invalid courseId format'
       });
     }
+
+    if (forbidStudentClassMetrics(req, res)) return;
 
     if (value.projectId && !mongoose.Types.ObjectId.isValid(value.projectId)) {
       return res.status(400).json({
@@ -2477,6 +2504,8 @@ router.get('/progress-detail/grouped', isOptionalAuth, async (req, res) => {
         message: 'Group not found'
       });
     }
+
+    if (forbidStudentClassMetrics(req, res)) return;
 
     // Get project
     let projectId = value.projectId;

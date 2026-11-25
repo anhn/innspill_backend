@@ -1,11 +1,27 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const passport = require('passport');
 const FacebookStrategy = require('passport-facebook').Strategy;
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
-const { isOptionalAuth, isAuthenticated } = require('../middleware/auth');
+const { isOptionalAuth, isAuthenticated, requireRole } = require('../middleware/auth');
 const router = express.Router();
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX || '20', 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const username = typeof req.body?.username === 'string' ? req.body.username.toLowerCase() : '';
+    return `${req.ip}:${username}`;
+  },
+  message: {
+    success: false,
+    message: 'Too many login attempts. Please try again later.'
+  }
+});
 
 /**
  * GET /api/v1/auth
@@ -105,6 +121,7 @@ router.post('/register', async (req, res) => {
     // Create session for the new user
     req.session.userId = newUser._id.toString();
     req.session.username = newUser.username;
+    req.session.userEmail = newUser.email;
     req.session.userRole = newUser.type;
 
     console.log('✅ Registration successful:', email);
@@ -145,7 +162,7 @@ router.post('/register', async (req, res) => {
  * POST /api/v1/auth/create-user
  * Create a general user (can specify type: teacher, student, or admin)
  */
-router.post('/create-user', isOptionalAuth, async (req, res) => {
+router.post('/create-user', requireRole('admin'), async (req, res) => {
   try {
     const { name, email, password, type, remark } = req.body;
 
@@ -256,12 +273,12 @@ router.post('/create-user', isOptionalAuth, async (req, res) => {
  * POST /api/v1/auth/login
  * Authenticate user with username and password
  */
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, require('../utils/activity').trackRoute('login', (req) => ({ data: { method: 'password' } })), (req, res, next) => { req._activityWho = null; next(); }, async (req, res) => {
   try {
     const { username, password } = req.body;
 
     // Validate request body
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
       return res.status(400).json({
         success: false,
         message: 'Username and password are required'
@@ -283,15 +300,9 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Check password - support both hashed and plain text (for backward compatibility)
     let passwordMatch = false;
-    
-    // Try bcrypt comparison first (for new hashed passwords)
-    try {
+    if (user.password && String(user.password).startsWith('$2')) {
       passwordMatch = await bcrypt.compare(password, user.password);
-    } catch (err) {
-      // If bcrypt fails, try plain text comparison (for old passwords)
-      passwordMatch = user.password === password;
     }
 
     if (!passwordMatch) {
@@ -304,6 +315,7 @@ router.post('/login', async (req, res) => {
     // Create session
     req.session.userId = user._id.toString();
     req.session.username = user.username;
+    req.session.userEmail = user.email;
     req.session.userRole = user.type;
 
     // Generate sessionId
@@ -329,9 +341,7 @@ router.post('/login', async (req, res) => {
     console.error('❌ Login error:', error.message);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message,
-      errorType: error.name
+      message: 'Internal server error'
     });
   }
 });
@@ -432,7 +442,7 @@ router.get('/google/callback',
  * Logout user
  * Query params: ?redirect=true to redirect to client login page
  */
-router.get('/logout', (req, res) => {
+router.get('/logout', require('../utils/activity').trackRoute('logout'), (req, res) => {
   const shouldRedirect = req.query.redirect === 'true';
   
   req.session.destroy((err) => {
@@ -461,22 +471,33 @@ router.get('/logout', (req, res) => {
  * GET /api/v1/auth/me
  * Get current user info
  */
-router.get('/me', (req, res) => {
-  if (req.session && req.session.userId) {
-    res.json({
-      success: true,
-      user: {
-        id: req.session.userId,
-        email: req.session.userEmail,
-        name: req.session.userName,
-        provider: req.session.provider
-      }
-    });
-  } else {
-    res.json({
+router.get('/me', async (req, res) => {
+  if (!req.session || !req.session.userId) {
+    return res.json({
       success: false,
       user: null
     });
+  }
+
+  try {
+    const user = await User.findById(req.session.userId).select('-password').lean();
+    if (!user) {
+      return res.json({ success: false, user: null });
+    }
+    return res.json({
+      success: true,
+      user: {
+        id: user._id.toString(),
+        username: user.username,
+        email: user.email || user.username,
+        fullName: user.fullName || '',
+        role: user.type,
+        provider: req.session.provider
+      }
+    });
+  } catch (error) {
+    console.error('❌ /auth/me error:', error.message);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -612,15 +633,9 @@ router.post('/change-password', isAuthenticated, async (req, res) => {
       });
     }
 
-    // Verify current password
     let passwordMatch = false;
-    
-    // Try bcrypt comparison first (for hashed passwords)
-    try {
+    if (user.password && String(user.password).startsWith('$2')) {
       passwordMatch = await bcrypt.compare(currentPassword, user.password);
-    } catch (err) {
-      // If bcrypt fails, try plain text comparison (for backward compatibility)
-      passwordMatch = user.password === currentPassword;
     }
 
     if (!passwordMatch) {

@@ -1,0 +1,9 @@
+{ "name": "ai4edu-be-systest", "private": true, "description": "System tests for AI4EDU backend",
+  "scripts": { "mock": "node mock-openai.js", "start:be": "bash start-be.sh",
+    "test:auth": "node be-tests/auth.test.js", "test:ai": "node be-tests/ai-features.test.js", "test:courses": "node be-tests/courses.test.js",
+    "test:assess": "node be-tests/assessment-setup.test.js", "test:submit": "node be-tests/submissions.test.js", "test:exercise": "node be-tests/exercise-submit.test.js", "test:collab": "node be-tests/collab.test.js",
+    "test:monitoring": "node be-tests/monitoring.test.js", "test:security": "node be-tests/security.test.js",
+    "test:functional": "npm run test:auth && npm run test:ai && npm run test:courses && npm run test:assess && npm run test:submit && npm run test:collab && npm run test:monitoring && npm run test:security",
+    "test:ratelimit": "node be-tests/ratelimit.test.js", "test:robustness": "node be-tests/robustness.test.js", "test:db-outage": "node be-tests/db-outage.test.js",
+    "test:stress": "node stress/stress.js", "report": "python3 aggregate.py" },
+  "dependencies": { "autocannon": "^8.0.0", "mongodb": "^6.10.0", "ws": "^8.18.0" } }

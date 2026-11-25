@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const Course = require('../models/Course');
 const User = require('../models/User');
 const { isOptionalAuth } = require('../middleware/auth');
+const { deleteCourseCascade } = require('../utils/cascadeDelete');
+const { courseConfigSchema } = require('../utils/course2027');
 const Joi = require('joi');
 
 // Validation schemas
@@ -14,7 +16,8 @@ const courseCreateSchema = Joi.object({
   university: Joi.string().optional().allow('', null).trim(),
   teacherId: Joi.string().optional().trim(), // Backward compatibility
   teacherIds: Joi.array().items(Joi.string().trim()).optional(), // New: array of teacher IDs
-  userName: Joi.string().optional().trim()
+  userName: Joi.string().optional().trim(),
+  config: courseConfigSchema.optional()
 });
 
 const courseUpdateSchema = Joi.object({
@@ -38,7 +41,9 @@ router.get('/', isOptionalAuth, async (req, res) => {
       teacherId: Joi.string().optional().trim(),
       academicYear: Joi.string().optional().trim(),
       university: Joi.string().optional().trim(),
-      userName: Joi.string().optional().trim()
+      userName: Joi.string().optional().trim(),
+      limit: Joi.number().integer().min(1).max(500).optional().default(50),
+      skip: Joi.number().integer().min(0).optional().default(0)
     });
 
     const { error, value } = schema.validate(req.query);
@@ -93,8 +98,11 @@ router.get('/', isOptionalAuth, async (req, res) => {
       queryFilter.university = value.university.trim();
     }
 
-    // Query courses with optional filters
-    const courses = await Course.find(queryFilter).sort({ createdAt: -1 });
+    const courses = await Course.find(queryFilter)
+      .sort({ createdAt: -1 })
+      .skip(value.skip)
+      .limit(value.limit)
+      .lean();
 
     // Format response with course IDs
     const formattedCourses = courses.map(course => {
@@ -113,6 +121,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
         university: course.university,
         teacherIds: teacherIds, // Array of teacher IDs
         teacherId: teacherId, // Backward compatibility (first teacher ID)
+        config: course.config || null,
         createdAt: course.createdAt,
         updatedAt: course.updatedAt
       };
@@ -163,6 +172,7 @@ router.post('/', isOptionalAuth, async (req, res) => {
       university: value.university || '',
       teacherIds: teacherIds,
       teacherId: teacherIds.length > 0 ? teacherIds[0] : null, // Backward compatibility
+      ...(value.config ? { config: value.config } : {}),
       createdAt: new Date()
     });
 
@@ -179,6 +189,7 @@ router.post('/', isOptionalAuth, async (req, res) => {
         university: course.university,
         teacherIds: course.teacherIds || [],
         teacherId: course.teacherId, // Backward compatibility
+        config: course.config || null,
         createdAt: course.createdAt,
         updatedAt: course.updatedAt
       }
@@ -256,6 +267,7 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
           ? course.teacherIds 
           : (course.teacherId ? [course.teacherId] : []),
         teacherId: course.teacherId || (course.teacherIds && course.teacherIds[0]) || null,
+        config: course.config || null,
         createdAt: course.createdAt,
         updatedAt: course.updatedAt
       }
@@ -280,10 +292,13 @@ router.delete('/:id', isOptionalAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid course ID format' });
     }
 
-    const course = await Course.findByIdAndDelete(req.params.id);
+    const course = await Course.findById(req.params.id);
     if (!course) {
       return res.status(404).json({ success: false, message: 'Course not found' });
     }
+
+    await deleteCourseCascade(req.params.id);
+    await Course.findByIdAndDelete(req.params.id);
 
     return res.status(200).json({ success: true, message: 'Course deleted' });
   } catch (error) {
@@ -365,6 +380,7 @@ router.get('/student/:username', isOptionalAuth, async (req, res) => {
       university: course.university,
       teacherIds: teacherIds,
       teacherId: teacherId, // Backward compatibility
+      config: course.config || null,
       createdAt: course.createdAt,
       updatedAt: course.updatedAt
     };
@@ -378,6 +394,79 @@ router.get('/student/:username', isOptionalAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch courses',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * GET /api/v1/courses/:id/config
+ * Course-home config for the 2027 screens. Missing config is null.
+ * Existing courses are not given a config by this read.
+ */
+router.get('/:id/config', isOptionalAuth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID format' });
+    }
+
+    const course = await Course.findById(req.params.id).select('config').lean();
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: course.config || null
+    });
+  } catch (error) {
+    console.error('❌ Error fetching course config:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch course config',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * PUT /api/v1/courses/:id/config
+ * Replace only the config field. Other course fields are left as they are.
+ */
+router.put('/:id/config', isOptionalAuth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid course ID format' });
+    }
+
+    const { error, value } = courseConfigSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request body',
+        error: error.details[0].message
+      });
+    }
+
+    const updated = await Course.findByIdAndUpdate(
+      req.params.id,
+      { $set: { config: value } },
+      { new: true, projection: { config: 1 } }
+    ).lean();
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: updated.config || null
+    });
+  } catch (error) {
+    console.error('❌ Error updating course config:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update course config',
       error: process.env.NODE_ENV !== 'production' ? error.message : undefined
     });
   }

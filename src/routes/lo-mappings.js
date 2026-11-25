@@ -6,15 +6,13 @@ const Project = require('../models/Project');
 const Task = require('../models/Task');
 const Role = require('../models/Role');
 const Quiz = require('../models/Quiz');
-const OpenAI = require('openai');
+const { getOpenAIClient, llmConfigured } = require('../services/openaiClient');
 const { isOptionalAuth } = require('../middleware/auth');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 const Joi = require('joi');
 
 // Initialize OpenAI client
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-}) : null;
+const openai = llmConfigured() ? getOpenAIClient() : null;
 
 // Validation schemas
 const saveMappingSchema = Joi.object({

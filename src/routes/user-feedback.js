@@ -3,6 +3,13 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const UserFeedback = require('../models/UserFeedback');
 const { isOptionalAuth } = require('../middleware/auth');
+const {
+  actingUsername,
+  resolveFilterUsername,
+  forbidNonStaffList,
+  isStaffRole,
+  actingRole,
+} = require('../middleware/requestIdentity');
 const Joi = require('joi');
 
 // Validation schemas
@@ -77,7 +84,7 @@ router.post('/', isOptionalAuth, async (req, res) => {
       projectId: value.projectId ? new mongoose.Types.ObjectId(value.projectId) : null,
       courseId: value.courseId ? new mongoose.Types.ObjectId(value.courseId) : null,
       userId: req.user?.id || null,
-      username: value.username || req.user?.username || null,
+      username: actingUsername(req) || value.username || null,
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.get('User-Agent')
     };
@@ -134,6 +141,16 @@ router.get('/', isOptionalAuth, async (req, res) => {
         message: 'Invalid query parameters',
         error: error.details[0].message
       });
+    }
+
+    if (!isStaffRole(actingRole(req))) {
+      if (forbidNonStaffList(req, res)) return;
+    } else if (value.username) {
+      const allowed = resolveFilterUsername(req, value.username);
+      if (!allowed) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+      value.username = allowed;
     }
 
     // Build query
@@ -217,6 +234,8 @@ router.get('/', isOptionalAuth, async (req, res) => {
  */
 router.get('/stats', isOptionalAuth, async (req, res) => {
   try {
+    if (forbidNonStaffList(req, res)) return;
+
     const schema = Joi.object({
       projectId: Joi.string().optional().trim(),
       courseId: Joi.string().optional().trim()

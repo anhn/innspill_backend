@@ -4,7 +4,8 @@ const mongoose = require('mongoose');
 const Worksheet = require('../models/Worksheet');
 const WorksheetTemplate = require('../models/WorksheetTemplate');
 const WorksheetGenerationAgent = require('../agents/WorksheetGenerationAgent');
-const OpenAI = require('openai');
+const { getOpenAIClient, llmConfigured } = require('../services/openaiClient');
+const { forbidIdentitySpoof } = require('../middleware/requestIdentity');
 const { isOptionalAuth } = require('../middleware/auth');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 const Joi = require('joi');
@@ -14,14 +15,10 @@ let openaiClient;
 let worksheetAgent;
 
 try {
-  if (!process.env.OPENAI_API_KEY) {
-    console.error('❌ OPENAI_API_KEY not set');
+  if (!llmConfigured()) {
+    console.error('❌ CLAUDE_API is not set');
   } else {
-    openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      timeout: 120000,
-      maxRetries: 1
-    });
+    openaiClient = getOpenAIClient();
     
     worksheetAgent = new WorksheetGenerationAgent(openaiClient, 'worksheet');
     console.log('✅ Worksheet Generation Agent initialized');
@@ -80,9 +77,9 @@ const saveWorksheetSchema = Joi.object({
   subjectArea: Joi.string().required().trim().min(1),
   learningObjective: Joi.string().required().trim().min(1),
   difficultyLevel: Joi.string().required().valid('easy', 'medium', 'hard'),
-  formatDescription: Joi.string().optional().default('').trim(),
-  examples: Joi.string().optional().default('').trim(),
-  references: Joi.string().optional().default('').trim(),
+  formatDescription: Joi.string().optional().allow('').default('').trim(),
+  examples: Joi.string().optional().allow('').default('').trim(),
+  references: Joi.string().optional().allow('').default('').trim(),
   userName: Joi.string().required().trim().min(1),
   instructionPage: Joi.string().optional().allow('').trim(),
   answerSheet: Joi.string().optional().allow('').trim(),

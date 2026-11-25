@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const AgentManager = require('../agents/AgentManager');
-const OpenAI = require('openai');
+const { getOpenAIClient, llmConfigured } = require('../services/openaiClient');
 const Joi = require('joi');
-const { isOptionalAuth } = require('../middleware/auth');
+const { isOptionalAuth, isAuthenticated } = require('../middleware/auth');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 
 // Initialize OpenAI client
@@ -11,14 +11,10 @@ let openaiClient;
 let agentManager;
 
 try {
-  if (!process.env.OPENAI_API_KEY) {
-    console.error('❌ OPENAI_API_KEY not set');
+  if (!llmConfigured()) {
+    console.error('❌ CLAUDE_API is not set');
   } else {
-    openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      timeout: 120000, // 120 second timeout per API call
-      maxRetries: 1 // Reduced retries to avoid compounding delays
-    });
+    openaiClient = getOpenAIClient();
     
     // Initialize Agent Manager
     agentManager = new AgentManager(openaiClient);
@@ -36,7 +32,7 @@ const requestSchema = Joi.object({
     searchAIApplications: Joi.string().optional(),
     userName: Joi.string().optional(),
     teacherInfo: Joi.object({
-      educationLevel: Joi.string().valid('Primary', 'Secondary', 'High School', 'University', 'Graduate', 'Professional').required(),
+      educationLevel: Joi.string().valid('Primary', 'Secondary', 'High School', 'University', 'Graduate', 'Professional', 'Elementary').required(),
       subjectArea: Joi.string().required(),
       country: Joi.string().required(),
       academicYear: Joi.string().required(),
@@ -73,7 +69,7 @@ router.get('/', (req, res) => {
  * GET /api/v1/chatbot/performance
  * Check server performance capabilities
  */
-router.get('/performance', (req, res) => {
+router.get('/performance', isAuthenticated, (req, res) => {
   const mem = process.memoryUsage();
   const uptime = process.uptime();
   
@@ -506,40 +502,6 @@ router.get('/agents', (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error getting agent info:', error.message);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
-  }
-});
-
-/**
- * POST /api/v1/chatbot/test-token-usage
- * Test endpoint without middleware to debug token usage
- */
-router.post('/test-token-usage', async (req, res) => {
-  try {
-    // Route to general agent
-    const response = await agentManager.routeRequest('general', req.body);
-    
-    console.log('🔍 Test endpoint - Agent response:', JSON.stringify(response, null, 2));
-    
-    if (response.success) {
-      res.status(200).json({
-        success: true,
-        agent: response.agent,
-        response: response.response,
-        usage: response.usage
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        error: response.error,
-        agent: response.agent
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error in test-token-usage:', error.message);
     res.status(500).json({
       success: false,
       error: 'Internal server error'

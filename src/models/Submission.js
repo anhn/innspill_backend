@@ -104,6 +104,26 @@ const starScoreEntrySchema = new mongoose.Schema({
   }
 }, { _id: false });
 
+// Margin comments on a submission, anchored to a quoted passage.
+const reviewReplySchema = new mongoose.Schema({
+  text: { type: String, required: true, trim: true },
+  author: { type: String, required: true, trim: true },
+  authorRole: { type: String, enum: ['teacher', 'student'], required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const reviewCommentSchema = new mongoose.Schema({
+  quote: { type: String, required: true },
+  prefix: { type: String, default: '' },
+  suffix: { type: String, default: '' },
+  text: { type: String, required: true, trim: true },
+  author: { type: String, required: true, trim: true },
+  authorRole: { type: String, enum: ['teacher', 'student'], required: true },
+  resolved: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now },
+  replies: { type: [reviewReplySchema], default: [] }
+});
+
 const submissionSchema = new mongoose.Schema({
   taskId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -136,6 +156,20 @@ const submissionSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true
+  },
+  repoUrl: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  codebase: {
+    type: new mongoose.Schema({
+      fileId: { type: String, required: true },
+      fileName: { type: String, required: true },
+      fileSize: { type: Number, required: true },
+      fileUrl: { type: String, required: true },
+    }, { _id: false }),
+    required: false
   },
   attachments: {
     type: [String],
@@ -175,6 +209,63 @@ const submissionSchema = new mongoose.Schema({
     ref: 'Role',
     required: false,
     index: true
+  },
+  // Optional teacher decision for the 2027 queue. No defaults.
+  // Existing submissions keep their scores inside feedbackHistory.
+  // AI scores stay a suggestion until a teacher calls the decision route.
+  decisionStatus: {
+    type: String,
+    required: false,
+    enum: ['waiting', 'approved', 'returned']
+  },
+  score: {
+    type: Number,
+    required: false,
+    min: 0,
+    max: 5
+  },
+  reflection: {
+    type: Number,
+    required: false,
+    min: 0,
+    max: 5
+  },
+  decidedAt: {
+    type: Date,
+    required: false
+  },
+  decidedBy: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  // Teacher review page: margin comments and formatted feedback (sanitised HTML).
+  reviewComments: {
+    type: [reviewCommentSchema],
+    default: undefined
+  },
+  feedbackHtml: {
+    type: String,
+    required: false
+  },
+  // Hand-in portal: the parts handed in and what the link checks found (text is in `submission`).
+  parts: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: undefined
+  },
+  missingNote: {
+    type: String,
+    required: false
+  },
+  // Every decision sent to the student: status, scores, who, when and the general comment as sent.
+  decisionLog: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: undefined
+  },
+  // Automated assessment: items, rule and AI findings, criteria roll-up and a suggested score.
+  assessment: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false
   }
 }, {
   collection: 'submissions',

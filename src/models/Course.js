@@ -13,12 +13,14 @@ const courseSchema = new mongoose.Schema({
   },
   academicYear: {
     type: String,
-    required: true,
+    required: false,
+    default: '',
     trim: true
   },
   university: {
     type: String,
-    required: true,
+    required: false,
+    default: '',
     trim: true
   },
   // Support for multiple teachers (array)
@@ -34,6 +36,12 @@ const courseSchema = new mongoose.Schema({
     required: false,
     trim: true,
     index: true
+  },
+  // Optional 2027 course-home config. Absent on existing courses.
+  // No default, so saving a 2026 course does not write this field.
+  config: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false
   }
 }, {
   collection: 'courses',

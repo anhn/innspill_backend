@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 require('dotenv').config();
+const bcrypt = require('bcrypt');
 const { connectDB, mongoose } = require('../src/config/database');
 const User = require('../src/models/User');
 
@@ -43,8 +44,15 @@ const users = [
     await User.deleteMany({ remark: 'testing' });
 
     console.log('📝 Inserting new users...');
-    const insertedUsers = await User.insertMany(users);
-    
+    const saltRounds = 10;
+    const docs = await Promise.all(
+      users.map(async (u) => ({
+        ...u,
+        password: await bcrypt.hash(u.password, saltRounds)
+      }))
+    );
+    const insertedUsers = await User.insertMany(docs);
+
     console.log(`✅ Successfully inserted ${insertedUsers.length} users:`);
     insertedUsers.forEach(user => {
       console.log(`   - ${user.username} (${user.type}) - Created: ${user.date_created.toISOString()}`);
@@ -58,10 +66,9 @@ const users = [
     process.exit(0);
   } catch (err) {
     console.error('❌ Seed error:', err);
-    try { 
-      await mongoose.connection.close(); 
+    try {
+      await mongoose.connection.close();
     } catch {}
     process.exit(1);
   }
 })();
-

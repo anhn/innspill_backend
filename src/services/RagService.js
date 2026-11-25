@@ -438,8 +438,21 @@ class RagService {
     return Array.from(byId.values()).slice(0, limit);
   }
 
+  filterStoreByCourse(store, request = {}) {
+    const courseId = request.courseId || process.env.RAG_COURSE_ID;
+    const courseCode = request.courseCode || process.env.RAG_COURSE_CODE;
+    if (!courseId && !courseCode) return store;
+    return store.filter((doc) => {
+      const meta = doc.metadata || {};
+      if (courseId && (meta.courseId === courseId || meta.course_id === courseId)) return true;
+      if (courseCode && (meta.courseCode === courseCode || meta.course_code === courseCode)) return true;
+      return false;
+    });
+  }
+
   async retrieveHybrid(query, request = {}, options = {}) {
-    const store = this.getStore();
+    let store = this.getStore();
+    store = this.filterStoreByCourse(store, request);
     if (!store.length) {
       return { chunks: [], debug: { reason: 'empty_store' } };
     }

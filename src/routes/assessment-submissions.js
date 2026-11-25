@@ -15,21 +15,126 @@ const User = require('../models/User');
 const FeedbackGenerationAgent = require('../agents/FeedbackGenerationAgent');
 const OriginalFeedbackGenerationAgent = require('../agents/OriginalFeedbackGenerationAgent');
 const FeedbackWorkflow = require('../agents/FeedbackWorkflow');
-const OpenAI = require('openai');
+const { getOpenAIClient, llmConfigured } = require('../services/openaiClient');
 const RagService = require('../services/RagService');
-const { isOptionalAuth } = require('../middleware/auth');
+const { isOptionalAuth, requireRole } = require('../middleware/auth');
+const {
+  actingUsername,
+  actingRole,
+  isStaffRole,
+  forbidIdentitySpoof,
+  resolveFilterUsername,
+} = require('../middleware/requestIdentity');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
+const analyticsRoutes = require('./assessment-submissions/analytics');
+const reviewNotesRoutes = require('./assessment-submissions/reviewNotes');
+const { sanitizeFeedbackHtml } = require('../utils/reviewNotes');
+const assessRoutes = require('./assessment-submissions/assess');
+const { assessmentBlock } = require('../assessment');
+const { enforceStudentIdBody } = require('../middleware/ownership');
+const { trackRoute } = require('../utils/activity');
+
+// Activity log: what happened to a hand-in, and by whom.
+const onSubmission = (event, data = () => ({})) => trackRoute(event, (req, body) => ({
+  taskId: req.loadedSubmission?.taskId ? String(req.loadedSubmission.taskId) : undefined,
+  submissionId: req.params.id || req.params.submissionId,
+  data: { student: req.loadedSubmission?.studentId, attempt: req.loadedSubmission?.attemptNumber, ...data(req, body) },
+}));
+const {
+  requireCourseStaff,
+  requireOwnerOrCourseStaff,
+  canStaffTask,
+  canStaffTasks,
+  canStaffSubmission,
+  canReadSubmission,
+  hideAiFromStudents,
+} = require('../middleware/courseAccess');
+
+/** AI scores are suggestions: whole numbers 0–5, 'not applicable', or nothing. */
+function safeScore(value) {
+  if (value === 'not applicable') return value;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(5, Math.max(0, Math.round(n)));
+}
+
+/** Every hand-in id in req.body[field] must be one the user may act on. */
+function bodySubmissions(field, who) {
+  return async (req, res, next) => {
+    try {
+      const ids = Array.isArray(req.body?.[field]) ? req.body[field] : [];
+      for (const id of ids) {
+        if (!mongoose.Types.ObjectId.isValid(id)) continue;
+        const submission = await Submission.findById(id).select('taskId studentId').lean();
+        if (!submission) continue;
+        const ok = who === 'staff' ? await canStaffSubmission(req, submission) : await canReadSubmission(req, submission);
+        if (!ok) return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+      return next();
+    } catch (error) {
+      return res.status(500).json({ success: false, message: 'Access check failed' });
+    }
+  };
+}
+
+/** Every task id in req.body.taskIds must belong to a course the user teaches. */
+async function staffTasksInBody(req, res, next) {
+  try {
+    const ids = (Array.isArray(req.body?.taskIds) ? req.body.taskIds : []).filter((id) => mongoose.Types.ObjectId.isValid(id));
+    if (!(await canStaffTasks(req, ids))) return res.status(403).json({ success: false, message: 'Forbidden' });
+    return next();
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Access check failed' });
+  }
+}
+
+/** GET / : a student lists only their own hand-ins; a teacher lists one task of a course they teach. */
+async function listScope(req, res, next) {
+  try {
+    const role = actingRole(req);
+    if (role === 'admin') return next();
+    if (!isStaffRole(role)) {
+      const self = actingUsername(req);
+      if (!self) return res.status(403).json({ success: false, message: 'Forbidden' });
+      req.query.studentId = self;
+      delete req.query.userName;
+      return next();
+    }
+    if (!req.query.taskId) return res.status(400).json({ success: false, message: 'Give a taskId.' });
+    if (!(await canStaffTask(req, req.query.taskId))) return res.status(403).json({ success: false, message: 'Forbidden' });
+    return next();
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Access check failed' });
+  }
+}
+
+/** A student may delete their own hand-in only while it has no decision; a teacher of the course always. */
+function ownerUndecidedOrStaff(req, res, next) {
+  const submission = req.loadedSubmission;
+  if (isStaffRole(actingRole(req))) return next();
+  if (submission && (submission.decisionStatus === 'approved' || submission.decisionStatus === 'returned')) {
+    return res.status(403).json({ success: false, message: 'A hand-in with a decision cannot be deleted.' });
+  }
+  return next();
+}
 const Joi = require('joi');
+const TaskProgress = require('../models/TaskProgress');
+const { decisionFields, buildGroupTaskStatuses } = require('../utils/course2027');
+const { exerciseSource, codeSourceView } = require('../utils/exerciseSubmission');
+const { normalizeParts, partsBlock } = require('../utils/handin');
+
+// Students never see the automated assessment or AI drafts of their hand-ins.
+router.use(hideAiFromStudents);
+router.use(analyticsRoutes);
+router.use(reviewNotesRoutes);
+router.use(assessRoutes);
 
 const FEEDBACK_MODELS = ['gpt-5.4-mini', 'gpt-4o-mini'];
 const DEFAULT_FEEDBACK_MODEL = FEEDBACK_MODELS.includes(process.env.FEEDBACK_MODEL)
   ? process.env.FEEDBACK_MODEL
   : 'gpt-5.4-mini';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = llmConfigured() ? getOpenAIClient() : null;
 const ragService = new RagService(openai);
 
 // Validation schemas
@@ -37,9 +142,18 @@ const createSubmissionSchema = Joi.object({
   taskId: Joi.string().required().trim().min(1),
   studentId: Joi.string().required().trim().min(1),
   studentName: Joi.string().required().trim().min(1),
-  submission: Joi.string().required().trim().min(1),
+  submission: Joi.string().trim().allow('').optional(),
+  repoUrl: Joi.string().trim().max(500).optional(),
+  codebase: Joi.object({
+    fileId: Joi.string().trim().max(300).required(),
+    fileName: Joi.string().trim().max(300).required(),
+    fileSize: Joi.number().integer().min(0).optional(),
+    fileUrl: Joi.string().trim().max(500).optional().allow(''),
+  }).unknown(true).optional(),
   attachments: Joi.array().items(Joi.string().trim()).optional().default([]),
   conversationLog: Joi.string().optional().allow('', null).trim(),
+  parts: Joi.array().items(Joi.object().unknown(true)).max(20).optional(),
+  missingNote: Joi.string().allow('').max(2000).optional(),
   attemptNumber: Joi.number().integer().min(1).optional().default(1),
   stakeholderId: Joi.string().optional().trim(),
   // New fields for question answers
@@ -49,6 +163,13 @@ const createSubmissionSchema = Joi.object({
 
 const updateSubmissionSchema = Joi.object({
   submission: Joi.string().optional().trim().min(1),
+  repoUrl: Joi.string().trim().max(500).optional(),
+  codebase: Joi.object({
+    fileId: Joi.string().trim().max(300).required(),
+    fileName: Joi.string().trim().max(300).required(),
+    fileSize: Joi.number().integer().min(0).optional(),
+    fileUrl: Joi.string().trim().max(500).optional().allow(''),
+  }).unknown(true).optional(),
   attachments: Joi.array().items(Joi.string().trim()).optional(),
   conversationLog: Joi.string().optional().allow('', null).trim(),
   // Updated: single score (0-5) that gets added to history
@@ -500,6 +621,7 @@ const formatSubmission = (submission) => ({
   attemptNumber: submission.attemptNumber,
   submission: submission.submission,
   attachments: submission.attachments || [],
+  ...codeSourceView(submission),
   conversationLog: submission.conversationLog,
   submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
   feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
@@ -519,6 +641,10 @@ const formatSubmission = (submission) => ({
   starScoreHistory: submission.starScoreHistory || [],
   // Backward compatibility virtuals
   starScore: submission.starScore,
+  ...decisionFields(submission),
+  parts: submission.parts || [],
+  missingNote: submission.missingNote || '',
+  assessment: submission.assessment || null,
   feedback: submission.feedback,
   stakeholderId: submission.stakeholderId ? submission.stakeholderId.toString() : null,
   createdAt: submission.createdAt,
@@ -529,7 +655,18 @@ const formatSubmission = (submission) => ({
  * POST /api/v1/assessment-submissions
  * Create a new submission
  */
-router.post('/', isOptionalAuth, async (req, res) => {
+router.post('/', isOptionalAuth, enforceStudentIdBody('studentId'), trackRoute('hand-in', (req, body) => ({
+  taskId: req.body.taskId,
+  submissionId: body?.data?.id,
+  tool: (req.body.parts || []).find((p) => p.kind === 'tool')?.tool,
+  data: {
+    attempt: req.body.attemptNumber,
+    chars: String(req.body.submission || '').length,
+    toolData: Boolean(req.body.conversationLog),
+    missingNote: req.body.missingNote || undefined,
+    parts: (req.body.parts || []).map((p) => ({ label: p.label, kind: p.kind, status: p.status, chars: p.chars, links: (p.links || []).length })),
+  },
+})), async (req, res) => {
   try {
     const { error, value } = createSubmissionSchema.validate(req.body);
     if (error) {
@@ -575,13 +712,40 @@ router.post('/', isOptionalAuth, async (req, res) => {
       stakeholderId = value.stakeholderId;
     }
 
+    const source = exerciseSource({
+      submission: value.submission,
+      repoUrl: value.repoUrl,
+      codebase: value.codebase,
+    });
+    if (source.error) {
+      return res.status(400).json({ success: false, message: source.error });
+    }
+
+    // Portal hand-ins: one version at a time. While the last version waits for feedback, or
+    // once it is approved, no new version is accepted; a returned version opens the next one.
+    if (Array.isArray(value.parts) && value.parts.length) {
+      const previous = await Submission.findOne({ taskId: value.taskId, studentId: value.studentId }).sort({ attemptNumber: -1, createdAt: -1 });
+      if (previous && previous.parts?.length && previous.decisionStatus !== 'returned') {
+        return res.status(409).json({
+          success: false,
+          message: previous.decisionStatus === 'approved'
+            ? 'This task is approved. No new version is needed.'
+            : 'The last version is waiting for feedback. You can hand in a new version after your TA has given feedback.',
+        });
+      }
+    }
+
     const submissionData = {
       taskId: value.taskId,
       studentId: value.studentId,
       studentName: value.studentName,
-      submission: value.submission,
+      submission: source.submission,
+      ...(source.repoUrl ? { repoUrl: source.repoUrl } : {}),
+      ...(source.codebase ? { codebase: source.codebase } : {}),
       attachments: value.attachments || [],
       conversationLog: value.conversationLog || null,
+      ...(value.parts ? { parts: normalizeParts(value.parts) } : {}),
+      ...(value.missingNote ? { missingNote: value.missingNote } : {}),
       attemptNumber: value.attemptNumber || 1,
       stakeholderId: stakeholderId,
       datetime: new Date(),
@@ -607,6 +771,9 @@ router.post('/', isOptionalAuth, async (req, res) => {
 
     const submission = new Submission(submissionData);
     await submission.save();
+    // The teacher starts the automated assessment from the review page.
+    // Set AUTO_ASSESS=1 to check each hand-in as soon as it arrives instead.
+    if (process.env.AUTO_ASSESS === '1') assessRoutes.assessInBackground(submission._id);
 
     res.status(201).json({
       success: true,
@@ -619,6 +786,7 @@ router.post('/', isOptionalAuth, async (req, res) => {
         attemptNumber: submission.attemptNumber,
         submission: submission.submission,
         attachments: submission.attachments || [],
+        ...codeSourceView(submission),
         conversationLog: submission.conversationLog,
         submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
         feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
@@ -626,6 +794,10 @@ router.post('/', isOptionalAuth, async (req, res) => {
         starScoreHistory: submission.starScoreHistory || [],
         // Backward compatibility virtuals
         starScore: submission.starScore,
+  ...decisionFields(submission),
+  parts: submission.parts || [],
+  missingNote: submission.missingNote || '',
+  assessment: submission.assessment || null,
         feedback: submission.feedback,
         stakeholderId: submission.stakeholderId ? submission.stakeholderId.toString() : null,
         createdAt: submission.createdAt,
@@ -646,7 +818,7 @@ router.post('/', isOptionalAuth, async (req, res) => {
  * GET /api/v1/assessment-submissions/:id
  * Get submission by ID
  */
-router.get('/:id', isOptionalAuth, async (req, res) => {
+router.get('/:id', isOptionalAuth, requireOwnerOrCourseStaff({ submission: 'id' }), onSubmission('view-hand-in'), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -663,6 +835,11 @@ router.get('/:id', isOptionalAuth, async (req, res) => {
       });
     }
 
+    const self = actingUsername(req);
+    if (self && !isStaffRole(actingRole(req)) && submission.studentId !== self) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
     res.status(200).json({
       success: true,
       data: {
@@ -674,6 +851,7 @@ router.get('/:id', isOptionalAuth, async (req, res) => {
         attemptNumber: submission.attemptNumber,
         submission: submission.submission,
         attachments: submission.attachments || [],
+        ...codeSourceView(submission),
         conversationLog: submission.conversationLog,
         submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
         feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
@@ -681,6 +859,10 @@ router.get('/:id', isOptionalAuth, async (req, res) => {
         starScoreHistory: submission.starScoreHistory || [],
         // Backward compatibility virtuals
         starScore: submission.starScore,
+  ...decisionFields(submission),
+  parts: submission.parts || [],
+  missingNote: submission.missingNote || '',
+  assessment: submission.assessment || null,
         feedback: submission.feedback,
         stakeholderId: submission.stakeholderId ? submission.stakeholderId.toString() : null,
         createdAt: submission.createdAt,
@@ -701,7 +883,7 @@ router.get('/:id', isOptionalAuth, async (req, res) => {
  * GET /api/v1/assessment-submissions/task/:taskId
  * Get submissions by task
  */
-router.get('/task/:taskId', isOptionalAuth, async (req, res) => {
+router.get('/task/:taskId', isOptionalAuth, requireCourseStaff({ task: 'taskId' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.taskId)) {
       return res.status(400).json({
@@ -759,7 +941,7 @@ router.get('/task/:taskId', isOptionalAuth, async (req, res) => {
  * Body: { "taskIds": ["taskId1", "taskId2", ...], "stakeholderId": "optional" }
  * Response: { "success": true, "data": [{ "taskId": "id1", "submissions": [...] }, ...], "errors": [...] }
  */
-router.post('/batch', isOptionalAuth, async (req, res) => {
+router.post('/batch', isOptionalAuth, staffTasksInBody, async (req, res) => {
   try {
     const schema = Joi.object({
       taskIds: Joi.array().items(Joi.string().trim().min(1)).required().min(1).max(MAX_BATCH_TASKS),
@@ -855,6 +1037,8 @@ router.post('/batch', isOptionalAuth, async (req, res) => {
  */
 router.get('/student/:studentId', isOptionalAuth, async (req, res) => {
   try {
+    if (forbidIdentitySpoof(req, res, req.params.studentId)) return;
+
     const schema = Joi.object({
       userName: Joi.string().optional().trim(),
       taskId: Joi.string().optional().trim()
@@ -869,7 +1053,7 @@ router.get('/student/:studentId', isOptionalAuth, async (req, res) => {
       });
     }
 
-    const query = { studentId: req.params.studentId };
+  const query = { studentId: resolveFilterUsername(req, req.params.studentId) || req.params.studentId };
     if (value.taskId) {
       if (!mongoose.Types.ObjectId.isValid(value.taskId)) {
         return res.status(400).json({
@@ -891,6 +1075,7 @@ router.get('/student/:studentId', isOptionalAuth, async (req, res) => {
       attemptNumber: submission.attemptNumber,
       submission: submission.submission,
       attachments: submission.attachments || [],
+      ...codeSourceView(submission),
       conversationLog: submission.conversationLog,
       submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
       feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
@@ -898,6 +1083,10 @@ router.get('/student/:studentId', isOptionalAuth, async (req, res) => {
       starScoreHistory: submission.starScoreHistory || [],
       // Backward compatibility virtuals
       starScore: submission.starScore,
+  ...decisionFields(submission),
+  parts: submission.parts || [],
+  missingNote: submission.missingNote || '',
+  assessment: submission.assessment || null,
       feedback: submission.feedback,
       stakeholderId: submission.stakeholderId ? submission.stakeholderId.toString() : null,
       createdAt: submission.createdAt,
@@ -922,7 +1111,7 @@ router.get('/student/:studentId', isOptionalAuth, async (req, res) => {
  * GET /api/v1/assessment-submissions
  * List all submissions
  */
-router.get('/', isOptionalAuth, async (req, res) => {
+router.get('/', isOptionalAuth, listScope, async (req, res) => {
   try {
     const schema = Joi.object({
       userName: Joi.string().optional().trim(),
@@ -953,7 +1142,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
           message: 'Invalid taskId format'
         });
       }
-      query.taskId = value.taskId;
+      query.taskId = new mongoose.Types.ObjectId(value.taskId);
     }
     if (value.studentId) {
       query.studentId = value.studentId;
@@ -965,7 +1154,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
           message: 'Invalid stakeholderId format'
         });
       }
-      query.stakeholderId = value.stakeholderId;
+      query.stakeholderId = new mongoose.Types.ObjectId(value.stakeholderId);
     }
 
     let submissions;
@@ -1038,6 +1227,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
         attemptNumber: submission.attemptNumber,
         submission: submission.submission,
         attachments: submission.attachments || [],
+        ...codeSourceView(submission),
         conversationLog: submission.conversationLog,
         submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
         feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
@@ -1045,6 +1235,10 @@ router.get('/', isOptionalAuth, async (req, res) => {
         starScoreHistory: submission.starScoreHistory || [],
         // Backward compatibility virtuals
         starScore: submission.starScore,
+  ...decisionFields(submission),
+  parts: submission.parts || [],
+  missingNote: submission.missingNote || '',
+  assessment: submission.assessment || null,
         feedback: submission.feedback,
         stakeholderId: submission.stakeholderId ? submission.stakeholderId.toString() : null,
         createdAt: submission.createdAt,
@@ -1070,7 +1264,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
  * GET /api/v1/assessment-submissions/task/:taskId/grouped
  * Get grouped submissions by task
  */
-router.get('/task/:taskId/grouped', isOptionalAuth, async (req, res) => {
+router.get('/task/:taskId/grouped', isOptionalAuth, requireCourseStaff({ task: 'taskId' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.taskId)) {
       return res.status(400).json({
@@ -1205,7 +1399,7 @@ router.get('/task/:taskId/grouped', isOptionalAuth, async (req, res) => {
  * GET /api/v1/assessment-submissions/project/:projectId/grouped
  * Get grouped submissions by project
  */
-router.get('/project/:projectId/grouped', isOptionalAuth, async (req, res) => {
+router.get('/project/:projectId/grouped', isOptionalAuth, requireCourseStaff({ project: 'projectId' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.projectId)) {
       return res.status(400).json({
@@ -1347,7 +1541,7 @@ router.get('/project/:projectId/grouped', isOptionalAuth, async (req, res) => {
  * GET /api/v1/assessment-submissions/stakeholder/:stakeholderId/grouped
  * Get grouped stakeholder submissions
  */
-router.get('/stakeholder/:stakeholderId/grouped', isOptionalAuth, async (req, res) => {
+router.get('/stakeholder/:stakeholderId/grouped', isOptionalAuth, requireCourseStaff({ stakeholder: 'stakeholderId' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.stakeholderId)) {
       return res.status(400).json({
@@ -1529,7 +1723,7 @@ router.get('/stakeholder/:stakeholderId/grouped', isOptionalAuth, async (req, re
  * PUT /api/v1/assessment-submissions/:id
  * Update submission
  */
-router.put('/:id', isOptionalAuth, async (req, res) => {
+router.put('/:id', isOptionalAuth, requireOwnerOrCourseStaff({ submission: 'id' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -1553,6 +1747,39 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
         success: false,
         message: 'Submission not found'
       });
+    }
+
+    const self = actingUsername(req);
+    const role = actingRole(req);
+    const isStaff = isStaffRole(role);
+    if (self && !isStaff && submission.studentId !== self) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden',
+      });
+    }
+    if (!isStaff) {
+      const gradingFields = [
+        'starScore',
+        'feedback',
+        'feedforward',
+        'concept',
+        'reflection',
+        'criticalThinking',
+        'taskQualityScore',
+        'reflectionScore',
+        'criticalthinkingScore',
+        'conceptMasteryScore',
+      ];
+      const hasGrading = gradingFields.some(
+        (f) => value[f] !== undefined && value[f] !== null && value[f] !== '',
+      );
+      if (hasGrading) {
+        return res.status(403).json({
+          success: false,
+          message: 'Forbidden',
+        });
+      }
     }
 
     // Validate stakeholderId if provided
@@ -1580,6 +1807,19 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
 
     // Update fields
     if (value.submission !== undefined) submission.submission = value.submission;
+    if (value.repoUrl !== undefined || value.codebase !== undefined) {
+      const source = exerciseSource({
+        submission: value.submission !== undefined ? value.submission : submission.submission,
+        repoUrl: value.repoUrl,
+        codebase: value.codebase,
+      });
+      if (source.error) {
+        return res.status(400).json({ success: false, message: source.error });
+      }
+      if (source.repoUrl) submission.repoUrl = source.repoUrl;
+      if (source.codebase) submission.codebase = source.codebase;
+      if (!String(submission.submission || '').trim()) submission.submission = source.submission;
+    }
     if (value.attachments !== undefined) submission.attachments = value.attachments || [];
     if (value.conversationLog !== undefined) submission.conversationLog = value.conversationLog;
     if (value.stakeholderId !== undefined) submission.stakeholderId = value.stakeholderId || null;
@@ -1638,6 +1878,7 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
         attemptNumber: submission.attemptNumber,
         submission: submission.submission,
         attachments: submission.attachments || [],
+        ...codeSourceView(submission),
         conversationLog: submission.conversationLog,
         submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
         feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
@@ -1645,6 +1886,10 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
         starScoreHistory: submission.starScoreHistory || [],
         // Backward compatibility virtuals
         starScore: submission.starScore,
+  ...decisionFields(submission),
+  parts: submission.parts || [],
+  missingNote: submission.missingNote || '',
+  assessment: submission.assessment || null,
         feedback: submission.feedback,
         stakeholderId: submission.stakeholderId ? submission.stakeholderId.toString() : null,
         createdAt: submission.createdAt,
@@ -1665,7 +1910,7 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
  * DELETE /api/v1/assessment-submissions/:id
  * Delete submission
  */
-router.delete('/:id', isOptionalAuth, async (req, res) => {
+router.delete('/:id', isOptionalAuth, requireOwnerOrCourseStaff({ submission: 'id' }), ownerUndecidedOrStaff, onSubmission('delete-hand-in'), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -1706,7 +1951,7 @@ router.delete('/:id', isOptionalAuth, async (req, res) => {
  *   - stakeholderId (string, optional): Stakeholder ID or "learn-from-human" for few-shot learning
  *   - useAIGuideline (boolean, optional, default: true): Whether to use AI guideline from task
  */
-router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
+router.get('/:submissionId/prompt', isOptionalAuth, requireCourseStaff({ submission: 'submissionId' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.submissionId)) {
       return res.status(400).json({
@@ -1862,6 +2107,7 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
       attachments: attachments,
       attachmentContent: attachmentContent || '',
       conversationLog: submission.conversationLog || '',
+      handinParts: [partsBlock(submission.parts, submission.missingNote), assessmentBlock(submission.assessment)].filter(Boolean).join('\n\n'),
       // Task metadata
       id: task._id.toString(),
       projectId: task.projectId ? task.projectId.toString() : null,
@@ -1939,7 +2185,7 @@ router.get('/:submissionId/prompt', isOptionalAuth, async (req, res) => {
  * POST /api/v1/assessment-submissions/:id/generate-feedback
  * Generate feedback for a submission using AI
  */
-router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('generate-feedback'), async (req, res) => {
+router.post('/:id/generate-feedback', requireRole('teacher', 'admin', 'school'), requireCourseStaff({ submission: 'id' }), onSubmission('generate-draft', (req, body) => ({ tokens: body?.usage?.total_tokens, score: body?.data?.taskQualityScore })), actionLoggingMiddleware('generate-feedback'), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -2076,6 +2322,7 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
       attachments: attachments,
       attachmentContent: attachmentContent || '',
       conversationLog: submission.conversationLog || '',
+      handinParts: [partsBlock(submission.parts, submission.missingNote), assessmentBlock(submission.assessment)].filter(Boolean).join('\n\n'),
       // Task metadata
       id: task._id.toString(),
       projectId: task.projectId ? task.projectId.toString() : null,
@@ -2125,10 +2372,10 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
         concept: parsed.concept || '',
         reflection: parsed.reflection || '',
         criticalThinking: parsed.criticalThinking || '',
-        taskQualityScore: parsed.taskQualityScore,
-        reflectionScore: parsed.reflectionScore,
-        criticalthinkingScore: parsed.criticalthinkingScore,
-        conceptMasteryScore: parsed.conceptMasteryScore
+        taskQualityScore: safeScore(parsed.taskQualityScore),
+        reflectionScore: safeScore(parsed.reflectionScore),
+        criticalthinkingScore: safeScore(parsed.criticalthinkingScore),
+        conceptMasteryScore: safeScore(parsed.conceptMasteryScore)
       };
     } catch (parseError) {
       console.error('❌ Error parsing feedback response:', parseError.message);
@@ -2189,7 +2436,7 @@ router.post('/:id/generate-feedback', isOptionalAuth, actionLoggingMiddleware('g
  * POST /api/v1/assessment-submissions/:id/save-feedback
  * Save feedback and star score to submission history
  */
-router.post('/:id/save-feedback', isOptionalAuth, async (req, res) => {
+router.post('/:id/save-feedback', requireRole('teacher', 'admin', 'school'), requireCourseStaff({ submission: 'id' }), onSubmission('save-draft', (req) => ({ chars: String(req.body.feedback || '').length, score: req.body.taskQualityScore })), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -2283,6 +2530,7 @@ router.post('/:id/save-feedback', isOptionalAuth, async (req, res) => {
         attemptNumber: submission.attemptNumber,
         submission: submission.submission,
         attachments: submission.attachments || [],
+        ...codeSourceView(submission),
         conversationLog: submission.conversationLog,
         submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
         feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
@@ -2290,6 +2538,10 @@ router.post('/:id/save-feedback', isOptionalAuth, async (req, res) => {
         starScoreHistory: submission.starScoreHistory || [],
         // Backward compatibility virtuals
         starScore: submission.starScore,
+  ...decisionFields(submission),
+  parts: submission.parts || [],
+  missingNote: submission.missingNote || '',
+  assessment: submission.assessment || null,
         feedback: submission.feedback,
         stakeholderId: submission.stakeholderId ? submission.stakeholderId.toString() : null,
         createdAt: submission.createdAt,
@@ -2311,7 +2563,7 @@ router.post('/:id/save-feedback', isOptionalAuth, async (req, res) => {
  * Delete a feedback entry from submission history by index
  * Query params: index (optional, defaults to most recent/last entry)
  */
-router.delete('/:id/feedback', isOptionalAuth, async (req, res) => {
+router.delete('/:id/feedback', isOptionalAuth, requireCourseStaff({ submission: 'id' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -2404,7 +2656,7 @@ router.delete('/:id/feedback', isOptionalAuth, async (req, res) => {
  * POST /api/v1/assessment-submissions/generate-feedback-batch
  * Generate feedback for multiple submissions (without saving to database)
  */
-router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware('generate-feedback-batch'), async (req, res) => {
+router.post('/generate-feedback-batch', requireRole('teacher', 'admin', 'school'), bodySubmissions('submissionIds', 'staff'), actionLoggingMiddleware('generate-feedback-batch'), async (req, res) => {
   try {
     const { error, value } = generateFeedbackBatchSchema.validate(req.body);
     if (error) {
@@ -2585,6 +2837,7 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
           attachments: attachments,
           attachmentContent: attachmentContent || '',
           conversationLog: submission.conversationLog || '',
+      handinParts: [partsBlock(submission.parts, submission.missingNote), assessmentBlock(submission.assessment)].filter(Boolean).join('\n\n'),
           // Task metadata
           id: task._id.toString(),
           projectId: task.projectId ? task.projectId.toString() : null,
@@ -2705,360 +2958,11 @@ router.post('/generate-feedback-batch', isOptionalAuth, actionLoggingMiddleware(
 });
 
 /**
- * GET /api/v1/assessment-submissions/heatmap
- * Get submission heatmap data
- */
-router.get('/heatmap', isOptionalAuth, async (req, res) => {
-  try {
-    const schema = Joi.object({
-      projectId: Joi.string().required().trim().min(1),
-      userName: Joi.string().optional().trim()
-    });
-
-    const { error, value } = schema.validate(req.query);
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid query parameters',
-        error: error.details[0].message
-      });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(value.projectId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid projectId format'
-      });
-    }
-
-    // Get all tasks for the project
-    const tasks = await Task.find({ projectId: value.projectId });
-    const taskIds = tasks.map(t => t._id);
-
-    // Get all submissions for these tasks
-    const submissions = await Submission.find({ taskId: { $in: taskIds } });
-
-    // Get unique student IDs
-    const studentIds = [...new Set(submissions.map(s => s.studentId))];
-
-    // Build heatmap data
-    const heatmap = [];
-    for (const task of tasks) {
-      for (const studentId of studentIds) {
-        const submission = submissions.find(
-          s => s.taskId.toString() === task._id.toString() && s.studentId === studentId
-        );
-        heatmap.push({
-          taskId: task._id.toString(),
-          studentId: studentId,
-          hasSubmission: !!submission,
-          starScore: submission ? submission.starScore : null
-        });
-      }
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        tasks: tasks.map(t => ({
-          id: t._id.toString(),
-          taskTitle: t.taskTitle,
-          keyword: t.keyword
-        })),
-        students: studentIds,
-        heatmap: heatmap
-      }
-    });
-  } catch (error) {
-    console.error('❌ Error fetching heatmap:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch heatmap data',
-      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
-    });
-  }
-});
-
-/**
- * GET /api/v1/assessment-submissions/stakeholder-heatmap
- * Get stakeholder interaction heatmap
- */
-router.get('/stakeholder-heatmap', isOptionalAuth, async (req, res) => {
-  try {
-    const schema = Joi.object({
-      projectId: Joi.string().required().trim().min(1),
-      userName: Joi.string().optional().trim()
-    });
-
-    const { error, value } = schema.validate(req.query);
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid query parameters',
-        error: error.details[0].message
-      });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(value.projectId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid projectId format'
-      });
-    }
-
-    // Get all roles for the project
-    const stakeholders = await Role.find({ projectId: value.projectId });
-
-    // Get all tasks for the project
-    const tasks = await Task.find({ projectId: value.projectId });
-    const taskIds = tasks.map(t => t._id);
-
-    // Get all submissions with stakeholder interactions
-    const submissions = await Submission.find({
-      taskId: { $in: taskIds },
-      stakeholderId: { $ne: null }
-    });
-
-    // Get unique student IDs
-    const studentIds = [...new Set(submissions.map(s => s.studentId))];
-
-    // Build heatmap data
-    const heatmap = [];
-    for (const stakeholder of stakeholders) {
-      for (const studentId of studentIds) {
-        const studentSubmissions = submissions.filter(
-          s => s.stakeholderId && s.stakeholderId.toString() === stakeholder._id.toString() && s.studentId === studentId
-        );
-        
-        const conversationCount = studentSubmissions.length;
-        const totalConversationLength = studentSubmissions.reduce((sum, s) => {
-          return sum + (s.conversationLog ? s.conversationLog.length : 0);
-        }, 0);
-
-        heatmap.push({
-          stakeholderId: stakeholder._id.toString(),
-          studentId: studentId,
-          conversationCount: conversationCount,
-          totalConversationLength: totalConversationLength
-        });
-      }
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        stakeholders: stakeholders.map(s => ({
-          id: s._id.toString(),
-          name: s.name
-        })),
-        students: studentIds,
-        heatmap: heatmap
-      }
-    });
-  } catch (error) {
-    console.error('❌ Error fetching stakeholder heatmap:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch stakeholder heatmap data',
-      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
-    });
-  }
-});
-
-/**
- * GET /api/v1/assessment-submissions/progress
- * Get progress data
- */
-router.get('/progress', isOptionalAuth, async (req, res) => {
-  try {
-    const schema = Joi.object({
-      projectId: Joi.string().required().trim().min(1),
-      studentId: Joi.string().optional().trim(),
-      userName: Joi.string().optional().trim()
-    });
-
-    const { error, value } = schema.validate(req.query);
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid query parameters',
-        error: error.details[0].message
-      });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(value.projectId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid projectId format'
-      });
-    }
-
-    // Get all tasks for the project
-    const tasks = await Task.find({ projectId: value.projectId });
-    const taskIds = tasks.map(t => t._id);
-
-    // Build query for submissions
-    const submissionQuery = { taskId: { $in: taskIds } };
-    if (value.studentId) {
-      submissionQuery.studentId = value.studentId;
-    }
-
-    // Get all submissions
-    const submissions = await Submission.find(submissionQuery);
-
-    // Get unique students
-    const studentIds = [...new Set(submissions.map(s => s.studentId))];
-    const studentNames = {};
-    submissions.forEach(s => {
-      if (!studentNames[s.studentId]) {
-        studentNames[s.studentId] = s.studentName;
-      }
-    });
-
-    // Build progress data by date
-    const progressData = {};
-    for (const studentId of studentIds) {
-      progressData[studentId] = {};
-      const studentSubmissions = submissions.filter(s => s.studentId === studentId);
-      
-      // Group by date
-      studentSubmissions.forEach(submission => {
-        const date = submission.datetime.toISOString().split('T')[0];
-        if (!progressData[studentId][date]) {
-          progressData[studentId][date] = 0;
-        }
-        progressData[studentId][date]++;
-      });
-    }
-
-    // Convert to required format
-    const students = studentIds.map(studentId => {
-      const progress = Object.keys(progressData[studentId] || {})
-        .sort()
-        .map(date => {
-          // Calculate accumulated count
-          const dates = Object.keys(progressData[studentId] || {}).sort();
-          const dateIndex = dates.indexOf(date);
-          let completedTasks = 0;
-          for (let i = 0; i <= dateIndex; i++) {
-            completedTasks += progressData[studentId][dates[i]];
-          }
-          return {
-            date: date,
-            completedTasks: completedTasks
-          };
-        });
-
-      return {
-        studentId: studentId,
-        studentName: studentNames[studentId],
-        progress: progress
-      };
-    });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        students: students
-      }
-    });
-  } catch (error) {
-    console.error('❌ Error fetching progress:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch progress data',
-      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
-    });
-  }
-});
-
-/**
- * GET /api/v1/assessment-submissions/timeline
- * Get timeline data
- */
-router.get('/timeline', isOptionalAuth, async (req, res) => {
-  try {
-    const schema = Joi.object({
-      projectId: Joi.string().required().trim().min(1),
-      studentId: Joi.string().optional().trim(),
-      userName: Joi.string().optional().trim()
-    });
-
-    const { error, value } = schema.validate(req.query);
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid query parameters',
-        error: error.details[0].message
-      });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(value.projectId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid projectId format'
-      });
-    }
-
-    // Get all tasks for the project
-    const tasks = await Task.find({ projectId: value.projectId });
-    const taskMap = {};
-    tasks.forEach(t => {
-      taskMap[t._id.toString()] = t;
-    });
-    const taskIds = tasks.map(t => t._id);
-
-    // Build query for submissions
-    const submissionQuery = { taskId: { $in: taskIds } };
-    if (value.studentId) {
-      submissionQuery.studentId = value.studentId;
-    }
-
-    // Get all submissions
-    const submissions = await Submission.find(submissionQuery).sort({ datetime: 1 });
-
-    const timeline = submissions.map(submission => {
-      const task = taskMap[submission.taskId.toString()];
-      return {
-        id: submission._id.toString(),
-        taskId: submission.taskId.toString(),
-        taskTitle: task ? task.taskTitle : null,
-        taskKeyword: task ? task.keyword : '',
-        studentId: submission.studentId,
-        studentName: submission.studentName,
-        datetime: submission.datetime,
-        submissionDeadline: task ? task.submissionDeadline : null,
-        isOnTime: task ? submission.datetime <= task.submissionDeadline : null,
-        submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
-        feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
-        feedbackHistory: submission.feedbackHistory || [],
-        starScoreHistory: submission.starScoreHistory || [],
-        // Backward compatibility virtuals
-        starScore: submission.starScore,
-        feedback: submission.feedback
-      };
-    });
-
-    res.status(200).json({
-      success: true,
-      data: timeline
-    });
-  } catch (error) {
-    console.error('❌ Error fetching timeline:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch timeline data',
-      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
-    });
-  }
-});
-
-/**
  * GET /api/v1/assessment-submissions/:id/attachments
  * Get attachments for a single submission
  * Returns attachments from both the task and the stakeholder role (if assigned)
  */
-router.get('/:id/attachments', isOptionalAuth, async (req, res) => {
+router.get('/:id/attachments', isOptionalAuth, requireOwnerOrCourseStaff({ submission: 'id' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -3198,7 +3102,7 @@ async function readAttachmentContents(filenames) {
  * Read attachment files for a submission and return their content as text.
  * Frontend expects: { success, data: { attachmentContent, attachmentsRead[], attachmentsFailed[], attachmentsTotal, details } }
  */
-router.post('/:id/read-attachments', isOptionalAuth, async (req, res) => {
+router.post('/:id/read-attachments', isOptionalAuth, requireOwnerOrCourseStaff({ submission: 'id' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -3375,7 +3279,7 @@ router.post('/:id/read-attachments', isOptionalAuth, async (req, res) => {
  * Body: { "submissionIds": ["id1", "id2", ...] }
  * Response: { "success": true, "data": [{ "submissionId": "id1", "attachments": [...], ... }, ...] }
  */
-router.post('/attachments/batch', isOptionalAuth, async (req, res) => {
+router.post('/attachments/batch', isOptionalAuth, bodySubmissions('submissionIds', 'owner-or-staff'), async (req, res) => {
   try {
     console.log('[Attachments Batch] Request received:', {
       submissionIds: req.body.submissionIds,
@@ -3576,11 +3480,8 @@ router.post('/attachments/batch', isOptionalAuth, async (req, res) => {
  * POST /api/v1/assessment-submissions/:submissionId/share
  * Share a submission with other students in the same group(s)
  */
-router.post('/:submissionId/share', isOptionalAuth, async (req, res) => {
+router.post('/:submissionId/share', isOptionalAuth, requireOwnerOrCourseStaff({ submission: 'submissionId' }), async (req, res) => {
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assessment-submissions.js:3319',message:'Share endpoint entry',data:{submissionId:req.params.submissionId,hasSession:!!req.session,hasUser:!!req.user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
     const { submissionId } = req.params;
 
     // Validate submission ID
@@ -3624,9 +3525,6 @@ router.post('/:submissionId/share', isOptionalAuth, async (req, res) => {
     const currentUserEmail = req.user?.email || req.session?.userEmail;
     const currentUserUsername = req.user?.name || req.session?.userName;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assessment-submissions.js:3360',message:'Session data extracted',data:{currentUserId,currentUserEmail,currentUserUsername,submissionStudentId:submission.studentId,sessionKeys:req.session?Object.keys(req.session):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
 
     // Get current user from database to check all possible identifiers
     let currentUser = null;
@@ -3642,21 +3540,12 @@ router.post('/:submissionId/share', isOptionalAuth, async (req, res) => {
         if (currentUserEmail) userQuery.$or.push({ username: currentUserEmail });
       }
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assessment-submissions.js:3367',message:'User query before DB lookup',data:{userQuery:JSON.stringify(userQuery)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       
       if (Object.keys(userQuery).length > 0) {
         currentUser = await User.findOne(userQuery);
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assessment-submissions.js:3379',message:'User lookup result',data:{found:!!currentUser,userId:currentUser?._id?.toString(),username:currentUser?.username,email:currentUser?.email,type:currentUser?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
       }
     } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assessment-submissions.js:3381',message:'No session data for user lookup',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
     }
 
     // Check authorization: user must own the submission or be a teacher/admin
@@ -3669,22 +3558,13 @@ router.post('/:submissionId/share', isOptionalAuth, async (req, res) => {
                 submissionStudentId === currentUser._id?.toString() ||
                 (currentUser._id && submissionStudentId === currentUser._id.toString());
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assessment-submissions.js:3388',message:'Ownership check',data:{submissionStudentId,userUsername:currentUser.username,userEmail:currentUser.email,userId:currentUser._id?.toString(),isOwner,matches:[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
     }
     
     if (!isOwner) {
       // Check if user is teacher/admin
       if (currentUser && (currentUser.type === 'teacher' || currentUser.type === 'admin' || currentUser.type === 'school')) {
         // Allow teachers/admins to share any submission
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assessment-submissions.js:3396',message:'Teacher/admin authorized',data:{userType:currentUser.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-        // #endregion
       } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'assessment-submissions.js:3399',message:'Authorization failed - returning 403',data:{hasCurrentUser:!!currentUser,userType:currentUser?.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-        // #endregion
         return res.status(403).json({
           success: false,
           message: 'You can only share your own submissions',
@@ -3869,6 +3749,7 @@ router.post('/:submissionId/share', isOptionalAuth, async (req, res) => {
             submission: submission.submission,
             attachments: submission.attachments || [],
             conversationLog: submission.conversationLog || '',
+      handinParts: [partsBlock(submission.parts, submission.missingNote), assessmentBlock(submission.assessment)].filter(Boolean).join('\n\n'),
             attemptNumber: 1,
             submissionQuestionAnswers: submission.submissionQuestionAnswers || [],
             feedbackReceivedQuestionAnswers: submission.feedbackReceivedQuestionAnswers || [],
@@ -3926,8 +3807,108 @@ router.post('/:submissionId/share', isOptionalAuth, async (req, res) => {
 });
 
 /**
+ * POST /api/v1/assessment-submissions/:id/decision
+ * Teacher approve or return. Stores score and reflection on the submission.
+ * Also appends a feedback entry so existing score reports keep working.
+ * Does not change earlier feedback entries.
+ */
+router.post('/:id/decision', requireRole('teacher', 'admin', 'school'), requireCourseStaff({ submission: 'id' }), onSubmission('decision', (req) => ({ status: req.body.status, score: req.body.score, reflection: req.body.reflection, chars: String(req.body.comment || '').length })), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid submission ID format'
+      });
+    }
+
+    const schema = Joi.object({
+      status: Joi.string().valid('approved', 'returned').required(),
+      score: Joi.number().integer().min(0).max(5).required(),
+      reflection: Joi.number().integer().min(0).max(5).required(),
+      comment: Joi.string().optional().allow('', null).trim(),
+      feedbackHtml: Joi.string().optional().allow('').max(200000)
+    });
+    const { error, value } = schema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request body',
+        error: error.details[0].message
+      });
+    }
+
+    const submission = await Submission.findById(req.params.id);
+    if (!submission) {
+      return res.status(404).json({
+        success: false,
+        message: 'Submission not found'
+      });
+    }
+
+    if (!submission.feedbackHistory) submission.feedbackHistory = [];
+    const feedbackText = (value.comment && value.comment.trim())
+      || (value.status === 'approved' ? 'Approved' : 'Returned');
+    submission.feedbackHistory.push({
+      feedback: feedbackText,
+      feedforward: '',
+      concept: '',
+      reflection: '',
+      criticalThinking: '',
+      taskQualityScore: value.score,
+      reflectionScore: value.reflection,
+      criticalthinkingScore: null,
+      conceptMasteryScore: null,
+      stakeholderId: submission.stakeholderId || null,
+      createdAt: new Date()
+    });
+
+    // Keep each decision as it was sent, so the teacher can see the history after changing it.
+    const sentHtml = value.feedbackHtml !== undefined ? sanitizeFeedbackHtml(value.feedbackHtml) : (submission.feedbackHtml || '');
+    if (value.feedbackHtml !== undefined) submission.feedbackHtml = sentHtml;
+    submission.decisionLog = [
+      ...(submission.decisionLog || []),
+      {
+        status: value.status,
+        score: value.score,
+        reflection: value.reflection,
+        at: new Date(),
+        by: actingUsername(req) || null,
+        comment: feedbackText,
+        feedbackHtml: sentHtml,
+        comments: (submission.reviewComments || []).length,
+      },
+    ];
+    submission.markModified('decisionLog');
+
+    submission.decisionStatus = value.status;
+    submission.score = value.score;
+    submission.reflection = value.reflection;
+    submission.decidedAt = new Date();
+    submission.decidedBy = actingUsername(req) || null;
+    await submission.save();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: submission._id.toString(),
+        ...decisionFields(submission)
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error saving submission decision:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to save submission decision',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+});
+
+/**
  * GET /api/v1/assessment-submissions/group/:groupId/task-status
- * Get task completion status for all members of a group
+ * Get task completion status for all members of a group.
+ * `data` is unchanged. `tasks` adds the 2027 status, why-line, tool,
+ * and revised deadline. Late is computed and not stored.
  */
 router.get('/group/:groupId/task-status', isOptionalAuth, async (req, res) => {
   try {
@@ -3999,8 +3980,8 @@ router.get('/group/:groupId/task-status', isOptionalAuth, async (req, res) => {
       }
     }
 
-    // Get all tasks for this project
-    const tasks = await Task.find({ projectId: value.projectId });
+    // Lean so a missing publish flag is not filled in with the schema default.
+    const tasks = await Task.find({ projectId: value.projectId }).lean();
     const taskIds = tasks.map(t => t._id);
 
     if (taskIds.length === 0) {
@@ -4015,16 +3996,17 @@ router.get('/group/:groupId/task-status', isOptionalAuth, async (req, res) => {
 
       return res.status(200).json({
         success: true,
-        data: emptyStatus
+        data: emptyStatus,
+        tasks: []
       });
     }
 
-    // Get all submissions for group members and project tasks
-    // Use aggregation for efficiency - only get taskId and studentId
+    // Get all submissions for group members and project tasks.
+    // completedTasks still uses taskId and studentId only.
     const submissions = await Submission.find({
       taskId: { $in: taskIds },
       studentId: { $in: group.studentIds }
-    }).select('taskId studentId').lean();
+    }).select('taskId studentId datetime createdAt decisionStatus score reflection').lean();
 
     // Group submissions by studentId and extract unique task IDs
     const statusMap = {};
@@ -4051,9 +4033,15 @@ router.get('/group/:groupId/task-status', isOptionalAuth, async (req, res) => {
       }
     });
 
+    const progressRows = await TaskProgress.find({
+      taskId: { $in: taskIds },
+      studentId: { $in: group.studentIds }
+    }).select('taskId').lean();
+
     return res.status(200).json({
       success: true,
-      data: statusMap
+      data: statusMap,
+      tasks: buildGroupTaskStatuses(tasks, submissions, progressRows)
     });
   } catch (error) {
     console.error('❌ Error fetching group task status:', error.message);

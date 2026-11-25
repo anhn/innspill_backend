@@ -15,7 +15,7 @@ if (!fs.existsSync(envPath)) {
   console.log('📝 Please create a .env file in the project root with your environment variables');
   console.log('📋 You can copy from env.example and add your values:');
   console.log('   cp env.example .env');
-  console.log('🔑 Make sure to add all required variables (OPENAI_API_KEY, SESSION_SECRET, etc.)');
+  console.log('🔑 Make sure to add all required variables (CLAUDE_API, SESSION_SECRET, etc.)');
   console.log('');
   console.log('💡 If you already have a .env file, make sure it\'s in the project root directory');
   process.exit(1);
@@ -24,8 +24,11 @@ if (!fs.existsSync(envPath)) {
 // Check for required environment variables
 require('dotenv').config();
 
+const llmKey = String(process.env.LLM_PROVIDER || 'claude').toLowerCase() === 'openai'
+  ? 'OPENAI_API_KEY'
+  : 'CLAUDE_API';
 const requiredEnvVars = [
-  'OPENAI_API_KEY',
+  llmKey,
   'SESSION_SECRET',
   'FACEBOOK_APP_ID',
   'FACEBOOK_APP_SECRET',
@@ -43,6 +46,11 @@ if (missingVars.length > 0) {
     console.error(`   - ${varName}`);
   });
   console.log('📝 Please add these variables to your .env file');
+  process.exit(1);
+}
+
+if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
+  console.error('❌ SESSION_SECRET must be at least 32 characters long');
   process.exit(1);
 }
 

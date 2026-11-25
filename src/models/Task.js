@@ -88,6 +88,27 @@ const taskSchema = new mongoose.Schema({
     default: 'unpublished',
     index: true
   },
+  // Optional 2027 fields. No defaults, so existing tasks stay unchanged.
+  // `status` above remains the draft/publish flag. Late is computed, not stored.
+  why: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  order: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  tool: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  revisedDeadline: {
+    type: Date,
+    required: false
+  },
   additionalInfo: {
     type: mongoose.Schema.Types.Mixed,
     required: false,

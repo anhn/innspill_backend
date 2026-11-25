@@ -1,0 +1,18 @@
+{
+  "issues": [
+    {
+      "file": "src/routes/plan.ts",
+      "line": 14,
+      "rule": "missing-auth",
+      "severity": "critical",
+      "message": "Route has no auth check"
+    },
+    {
+      "path": "src/tutor/missing.ts",
+      "lineNumber": 3,
+      "ruleId": "hallucinated-import",
+      "severity": "warning",
+      "msg": "Package is not installed"
+    }
+  ]
+}

@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const { isOptionalAuth } = require('../middleware/auth');
+const { isAuthenticated } = require('../middleware/auth');
+const { assessmentUploadFileFilter } = require('../utils/uploadSecurity');
 
 // Try to require multer, fallback if not installed
 let multer;
@@ -41,8 +42,8 @@ if (multer) {
     storage: storage,
     limits: {
       fileSize: 10 * 1024 * 1024 // 10MB limit (adjust as needed)
-    }
-    // No fileFilter - allows all file types
+    },
+    fileFilter: assessmentUploadFileFilter
   });
 } else {
   // Fallback: create a dummy upload middleware
@@ -62,7 +63,17 @@ if (multer) {
  * Query params: userName (optional)
  * Body: FormData with 'file' field
  */
-router.post('/upload', isOptionalAuth, upload.single('file'), async (req, res) => {
+router.post('/upload', isAuthenticated, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, message: 'File too large' });
+      }
+      return res.status(400).json({ success: false, message: err.message || 'Upload rejected' });
+    }
+    return next();
+  });
+}, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -97,7 +108,7 @@ router.post('/upload', isOptionalAuth, upload.single('file'), async (req, res) =
  * GET /api/v1/files/:filename
  * Download/serve uploaded files
  */
-router.get('/:filename', isOptionalAuth, async (req, res) => {
+router.get('/:filename', isAuthenticated, async (req, res) => {
   try {
     const filename = req.params.filename;
     
@@ -149,6 +160,7 @@ router.get('/:filename', isOptionalAuth, async (req, res) => {
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${displayName}"`);
     res.setHeader('Content-Length', stats.size);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, max-age=3600');
 
     // Stream the file

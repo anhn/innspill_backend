@@ -6,7 +6,9 @@ const Joi = require('joi');
 const User = require('../models/User');
 const ActionLog = require('../models/ActionLog');
 const Course = require('../models/Course');
-const { isOptionalAuth } = require('../middleware/auth');
+const { isOptionalAuth, requireRole } = require('../middleware/auth');
+
+router.use(requireRole('admin'));
 
 // Validation schemas
 const createUserSchema = Joi.object({
@@ -294,6 +296,13 @@ router.post('/:id/assign-course', isOptionalAuth, async (req, res) => {
 
     if (value.courseId && !mongoose.Types.ObjectId.isValid(value.courseId)) {
       return res.status(400).json({ success: false, message: 'Invalid courseId format' });
+    }
+
+    if (value.courseId) {
+      const course = await Course.findById(value.courseId);
+      if (!course) {
+        return res.status(404).json({ success: false, message: 'Course not found' });
+      }
     }
 
     user.remark = value.courseId || '';

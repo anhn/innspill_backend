@@ -107,11 +107,37 @@ async function formatGroupResponse(group) {
 /**
  * Helper function to check if students are in other active groups
  */
+async function memberAliasSet(studentId) {
+  const aliases = new Set([studentId]);
+  const orClause = [{ username: studentId }, { email: studentId }];
+  if (mongoose.Types.ObjectId.isValid(studentId)) {
+    orClause.push({ _id: new mongoose.Types.ObjectId(studentId) });
+  }
+  const user = await User.findOne({ $or: orClause }).select('_id username email').lean();
+  if (user) {
+    aliases.add(user._id.toString());
+    aliases.add(user.username);
+    if (user.email) aliases.add(user.email);
+  }
+  return aliases;
+}
+
+async function expandStudentIdsForConflictCheck(studentIds) {
+  const expanded = new Set();
+  for (const id of studentIds) {
+    const aliases = await memberAliasSet(id);
+    aliases.forEach((a) => expanded.add(a));
+  }
+  return [...expanded];
+}
+
 async function checkStudentGroupConflicts(courseId, projectId, studentIds, excludeGroupId = null) {
+  const expandedStudentIds = await expandStudentIdsForConflictCheck(studentIds);
+
   const query = {
     courseId: new mongoose.Types.ObjectId(courseId),
     isActive: true,
-    studentIds: { $in: studentIds }
+    studentIds: { $in: expandedStudentIds }
   };
   
   if (projectId) {
@@ -130,15 +156,16 @@ async function checkStudentGroupConflicts(courseId, projectId, studentIds, exclu
   const conflictingGroups = await StudentGroup.find(query);
   const conflictingStudents = [];
   
-  conflictingGroups.forEach(group => {
-    studentIds.forEach(studentId => {
-      if (group.studentIds.includes(studentId)) {
+  for (const group of conflictingGroups) {
+    for (const studentId of studentIds) {
+      const aliases = await memberAliasSet(studentId);
+      if (group.studentIds.some((memberId) => aliases.has(memberId))) {
         if (!conflictingStudents.includes(studentId)) {
           conflictingStudents.push(studentId);
         }
       }
-    });
-  });
+    }
+  }
 
   return conflictingStudents;
 }
@@ -896,12 +923,15 @@ router.delete('/:groupId/students', isOptionalAuth, async (req, res) => {
     const removedStudentIds = value.studentIds.filter(id => group.studentIds.includes(id));
     group.studentIds = group.studentIds.filter(id => !value.studentIds.includes(id));
 
-    // Ensure group has at least 2 students (or allow empty group if needed)
-    if (group.studentIds.length < 2 && group.studentIds.length > 0) {
+    if (group.studentIds.length === 1) {
       return res.status(400).json({
         success: false,
         message: 'Group must have at least 2 students. Delete the group instead if you want to remove all students.'
       });
+    }
+
+    if (group.studentIds.length === 0) {
+      group.isActive = false;
     }
 
     await group.save();

@@ -1,0 +1,41 @@
+{
+  "default": "quality",
+  "eslint": {},
+  "sonarqube": {},
+  "semgrep": {
+    "javascript.lang.security.audit.sqli": "injection"
+  },
+  "codeql": {
+    "js/sql-injection": "injection"
+  },
+  "gitleaks": {
+    "generic-api-key": "secret"
+  },
+  "osv-scanner": {},
+  "jscpd": {},
+  "lizard": {},
+  "coverage": {},
+  "ai-reviewer": {},
+  "vibeguard": {
+    "placeholder-credential": "ai-footprint",
+    "skipped-test": "test",
+    "prompt-injection": "injection",
+    "slopsquatting": "dependency"
+  },
+  "prodlint": {
+    "missing-auth": "auth",
+    "hallucinated-import": "dependency"
+  },
+  "shipsafe": {
+    "permissions-write-all": "auth",
+    "secret": "secret"
+  },
+  "vibesec": {
+    "sql-injection": "injection",
+    "missing-auth": "auth",
+    "hallucinated-package": "dependency"
+  },
+  "guardvibe": {
+    "hardcoded-secret": "secret"
+  }
+}

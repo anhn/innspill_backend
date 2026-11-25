@@ -4,12 +4,15 @@
  * Supports dynamic base path configuration
  */
 
+const path = require("path");
+const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const session = require("express-session");
+const MongoStore = require("connect-mongo");
 const passport = require("passport");
 const swaggerUi = require("swagger-ui-express");
 require("dotenv").config();
@@ -47,8 +50,30 @@ const usersRoutes = require("./src/routes/users");
 const studentGroupsRoutes = require("./src/routes/student-groups");
 const planningPokerRoutes = require("./src/routes/planning-poker");
 const swotAnalysisRoutes = require("./src/routes/swot-analysis");
+const groupToolRoutes = require("./src/routes/group-tools");
+const reStudioRoutes = require("./src/routes/re-studio");
+const handinRoutes = require("./src/routes/handin");
+const activityRoutes = require("./src/routes/activity");
+const {
+  enforceApiAuthentication,
+} = require("./src/middleware/auth");
+const mongoose = require("mongoose");
+const { attachPlanningPokerWss } = require("./src/ws/planningPoker");
 
 const app = express();
+const isTestEnv = process.env.NODE_ENV === "test";
+
+function validateSessionSecret() {
+  if (isTestEnv) return;
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    console.error(
+      "❌ SESSION_SECRET must be set and at least 32 characters long",
+    );
+    process.exit(1);
+  }
+}
+validateSessionSecret();
 const PORT = process.env.PORT || 3000;
 const MAX_PORT_RETRIES = 10;
 
@@ -82,15 +107,19 @@ connectDB()
   })
   .catch((error) => {
     console.error("❌ MongoDB connection error:", error.message);
-    process.exit(1);
+    if (!isTestEnv) {
+      process.exit(1);
+    }
   });
 
 // ==========================
 // Global Middleware
 // ==========================
-// Trust proxy - Required for cPanel/reverse proxy deployments
-// This allows rate limiting and session management to work correctly behind a proxy
-app.set("trust proxy", 1);
+if (process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true") {
+  app.set("trust proxy", 1);
+} else if (process.env.TRUST_PROXY) {
+  app.set("trust proxy", process.env.TRUST_PROXY);
+}
 
 // Security middleware
 app.use(
@@ -104,21 +133,51 @@ app.use(
 app.use(morgan("combined"));
 
 // CORS configuration
+function buildAllowedOrigins() {
+  const extra = (process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [
+    ...new Set(
+      [process.env.CLIENT_URL, process.env.SERVER_URL, ...extra].filter(
+        Boolean,
+      ),
+    ),
+  ];
+}
+
+function isLocalhostOrigin(origin) {
+  if (!origin) return false;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 const corsOptions = {
   origin: (origin, callback) => {
     if (process.env.NODE_ENV !== "production") {
       return callback(null, true);
     }
 
-    const allowedOrigins = [
-      process.env.CLIENT_URL,
-      process.env.SERVER_URL,
-    ].filter(Boolean);
+    const allowedOrigins = buildAllowedOrigins();
+    const allowLocalhost =
+      process.env.ALLOW_LOCALHOST_CORS === "1" ||
+      process.env.ALLOW_LOCALHOST_CORS === "true";
+
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
+    if (allowLocalhost && isLocalhostOrigin(origin)) {
+      return callback(null, true);
+    }
 
-    return callback(new Error("Not allowed by CORS"));
+    console.warn(`⚠️ CORS blocked origin: ${origin}`);
+    // Do not pass Error — that becomes HTTP 500 on OPTIONS preflight
+    return callback(null, false);
   },
   credentials: true,
   methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
@@ -140,19 +199,32 @@ app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+const sessionMaxAge = 24 * 60 * 60 * 1000;
+const sessionCookie = {
+  secure: process.env.NODE_ENV === "production",
+  httpOnly: true,
+  sameSite: "lax",
+  maxAge: sessionMaxAge,
+};
+
+const sessionOptions = {
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: sessionCookie,
+};
+
+if (process.env.MONGO_URI) {
+  sessionOptions.store = MongoStore.create({
+    mongoUrl: process.env.MONGO_URI,
+    dbName: process.env.SESSION_DB_NAME || "ai4edu_database",
+    collectionName: "sessions",
+    ttl: Math.floor(sessionMaxAge / 1000),
+  });
+}
+
 // Session configuration
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "defaultsecret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    },
-  }),
-);
+app.use(session(sessionOptions));
 
 // Passport configuration
 app.use(passport.initialize());
@@ -162,12 +234,22 @@ app.use(passport.session());
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  // Count per logged-in user: on campus many students share one IP address.
+  keyGenerator: (req) => (req.session?.userId ? `user:${req.session.userId}` : req.ip),
   message: {
     success: false,
-    error: "Too many requests from this IP, please try again later.",
+    error: "Too many requests, please try again later.",
   },
 });
 app.use(`${normalizedBasePath}/api/`, limiter);
+
+// Per-user budgets for AI calls and GitHub link checks (src/middleware/aiLimits.js).
+const { limit: perUserLimit } = require("./src/middleware/aiLimits");
+for (const route of ["chatbot", "chat-messages", "re-studio", "groups", "prompts", "worksheets", "assessment-quizzes", "lo-mappings"]) {
+  app.use(`${normalizedBasePath}/api/v1/${route}`, perUserLimit("ai"));
+}
+app.use(new RegExp(`^${normalizedBasePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/api/v1/assessment-submissions/(generate-feedback-batch|[0-9a-f]{24}/(generate-feedback|assess))$`), perUserLimit("ai"));
+app.use(`${normalizedBasePath}/api/v1/handin`, perUserLimit("links"));
 
 // ==========================
 // Health Check Endpoints
@@ -176,9 +258,13 @@ app.use(`${normalizedBasePath}/api/`, limiter);
 app.get(
   ["/health", `${normalizedBasePath}/health`].filter(Boolean),
   (req, res) => {
-    res.status(200).json({
-      success: true,
-      message: "InnSpill Backend API is running",
+    const dbReady = mongoose.connection.readyState === 1;
+    res.status(dbReady ? 200 : 503).json({
+      success: dbReady,
+      message: dbReady
+        ? "InnSpill Backend API is running"
+        : "InnSpill Backend API — database unavailable",
+      db: dbReady ? "connected" : "disconnected",
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || "development",
       basePath: normalizedBasePath || "none",
@@ -208,6 +294,20 @@ app.use(
 // ==========================
 // API Routes
 // ==========================
+app.use(`${normalizedBasePath}/api/v1`, enforceApiAuthentication);
+
+// Static uploads (assessment files) — auth enforced at download layer in routes where needed
+app.use(
+  `${normalizedBasePath}/uploads`,
+  express.static(path.join(__dirname, "uploads"), {
+    fallthrough: true,
+    setHeaders(res) {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Disposition", "attachment");
+    },
+  }),
+);
+
 // Mount routes with base path
 app.use(`${normalizedBasePath}/api/v1/chatbot`, chatbotRoutes);
 app.use(`${normalizedBasePath}/api/v1/auth`, authRoutes);
@@ -246,6 +346,10 @@ app.use(`${normalizedBasePath}/api/v1/users`, usersRoutes);
 app.use(`${normalizedBasePath}/api/v1/student-groups`, studentGroupsRoutes);
 app.use(`${normalizedBasePath}/api/v1/planning-poker`, planningPokerRoutes);
 app.use(`${normalizedBasePath}/api/v1/swot-analysis`, swotAnalysisRoutes);
+app.use(`${normalizedBasePath}/api/v1/groups`, groupToolRoutes);
+app.use(`${normalizedBasePath}/api/v1/re-studio`, reStudioRoutes);
+app.use(`${normalizedBasePath}/api/v1/handin`, handinRoutes);
+app.use(`${normalizedBasePath}/api/v1/activity`, activityRoutes);
 
 // ==========================
 // Root Endpoint
@@ -310,6 +414,8 @@ app.get(
         "notifications-by-student": `${bp}/api/v1/notifications/student/:username`,
         "chat-messages-by-student-stakeholder": `${bp}/api/v1/chat-messages/student/:username/stakeholder/:stakeholderId`,
         "send-chat-message": `${bp}/api/v1/chat-messages`,
+        "group-tools": `${bp}/api/v1/groups/:groupId`,
+        "re-studio-reply": `${bp}/api/v1/re-studio/reply`,
       },
     });
   },
@@ -335,13 +441,15 @@ app.use("*", (req, res) => {
 // ==========================
 app.use((err, req, res, next) => {
   console.error("❌ Global error:", err.message);
+  if (err.type === "entity.parse.failed") {
+    return res.status(400).json({ success: false, error: "Invalid JSON body" });
+  }
+  if (err.type === "entity.too.large" || err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ success: false, error: "Payload too large" });
+  }
   res.status(err.status || 500).json({
     success: false,
-    error:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : err.message,
-    ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
+    error: "Internal server error",
   });
 });
 
@@ -349,7 +457,10 @@ app.use((err, req, res, next) => {
 // Server Startup
 // ==========================
 function startServer(port, attempt = 0) {
-  const server = app.listen(port, () => {
+  const server = http.createServer(app);
+  attachPlanningPokerWss(server, normalizedBasePath);
+
+  server.listen(port, () => {
     console.log(`🚀 InnSpill Backend API running on port ${port}`);
   });
 
@@ -368,9 +479,14 @@ function startServer(port, attempt = 0) {
   });
 }
 
-if (process.env.NODE_ENV !== "production" || !process.env.PASSENGER_APP_ENV) {
-  // Local development - start Express server
+if (
+  !isTestEnv &&
+  (process.env.NODE_ENV !== "production" || !process.env.PASSENGER_APP_ENV)
+) {
+  // Local development - start HTTP server (REST + planning poker WebSocket)
   startServer(PORT);
+} else if (isTestEnv) {
+  // Jest loads app without binding a port
 } else {
   // Production with Passenger (cPanel) - export app
   console.log(`🚀 InnSpill Backend API loaded`);

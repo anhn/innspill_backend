@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 // Enable buffering for production deployments (cPanel/Passenger)
 // This allows queries to wait for connection instead of failing immediately
 mongoose.set("bufferCommands", true);
-mongoose.set("bufferTimeoutMS", 30000); // Wait up to 30 seconds for connection
+mongoose.set("bufferTimeoutMS", 5000);
 
 async function connectDB() {
   // If already connected or connecting, return

@@ -31,7 +31,7 @@ const userSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['teacher', 'student', 'admin'],
+    enum: ['teacher', 'student', 'school', 'admin'],
     default: 'teacher'
   },
   remark: {

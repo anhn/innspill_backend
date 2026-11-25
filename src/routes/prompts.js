@@ -4,7 +4,8 @@ const mongoose = require('mongoose');
 const Prompt = require('../models/Prompt');
 const AgentManager = require('../agents/AgentManager');
 const PromptRevisionAgent = require('../agents/PromptRevisionAgent');
-const OpenAI = require('openai');
+const { getOpenAIClient, llmConfigured } = require('../services/openaiClient');
+const { forbidIdentitySpoof } = require('../middleware/requestIdentity');
 const { isOptionalAuth } = require('../middleware/auth');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 const Joi = require('joi');
@@ -15,14 +16,10 @@ let agentManager;
 let promptRevisionAgent;
 
 try {
-  if (!process.env.OPENAI_API_KEY) {
-    console.error('❌ OPENAI_API_KEY not set');
+  if (!llmConfigured()) {
+    console.error('❌ CLAUDE_API is not set');
   } else {
-    openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      timeout: 120000,
-      maxRetries: 1
-    });
+    openaiClient = getOpenAIClient();
     
     agentManager = new AgentManager(openaiClient);
     promptRevisionAgent = new PromptRevisionAgent(openaiClient);
@@ -197,6 +194,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
     }
 
     const { userName } = value;
+    if (forbidIdentitySpoof(req, res, userName)) return;
 
     // Query prompts
     const prompts = await Prompt.find({ userName }).sort({ createdAt: -1 });

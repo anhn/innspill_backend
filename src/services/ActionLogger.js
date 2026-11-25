@@ -141,7 +141,10 @@ class ActionLogger {
       
       if (userId) query.userId = userId;
       if (action) query.action = action;
-      if (coursePlanName) query.coursePlanName = new RegExp(coursePlanName, 'i');
+      if (coursePlanName) {
+        const { escapeRegex } = require('../utils/escapeRegex');
+        query.coursePlanName = new RegExp(escapeRegex(coursePlanName), 'i');
+      }
       
       if (startDate || endDate) {
         query.timestamp = {};

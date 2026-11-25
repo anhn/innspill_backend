@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Project = require('../models/Project');
 const Course = require('../models/Course');
 const { isOptionalAuth } = require('../middleware/auth');
+const { deleteProjectCascade } = require('../utils/cascadeDelete');
 const Joi = require('joi');
 
 // Validation schemas
@@ -383,9 +384,7 @@ router.delete('/:id', isOptionalAuth, async (req, res) => {
       });
     }
 
-    // Note: In a production system, you might want to handle cascading deletes
-    // for associated tasks, roles, quizzes, and submissions here
-    await Project.findByIdAndDelete(req.params.id);
+    await deleteProjectCascade(req.params.id);
 
     res.status(200).json({
       success: true,

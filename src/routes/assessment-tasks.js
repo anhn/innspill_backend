@@ -3,8 +3,30 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Task = require('../models/Task');
 const Project = require('../models/Project');
-const { isOptionalAuth } = require('../middleware/auth');
+const TaskProgress = require('../models/TaskProgress');
+const { isOptionalAuth, requireRole } = require('../middleware/auth');
+const { requireCourseStaff, canStaffProject } = require('../middleware/courseAccess');
+
+// Creating, editing and deleting tasks: a teacher of the project's course (or an admin).
+const staffRole = requireRole('teacher', 'admin', 'school');
+async function staffOfBodyProject(req, res, next) {
+  try {
+    const projectId = req.body?.projectId;
+    if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) return next(); // the route's own validation answers
+    if (!(await canStaffProject(req, projectId))) return res.status(403).json({ success: false, message: 'Forbidden' });
+    return next();
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Access check failed' });
+  }
+}
 const Joi = require('joi');
+
+const task2027Fields = {
+  why: Joi.string().optional().allow('', null).trim(),
+  order: Joi.string().optional().allow('', null).trim(),
+  tool: Joi.string().optional().allow('', null).trim(),
+  revisedDeadline: Joi.date().optional().allow(null).iso()
+};
 
 // Validation schemas
 const createTaskSchema = Joi.object({
@@ -33,7 +55,8 @@ const createTaskSchema = Joi.object({
   feedbackReceivedQuestionTimer: Joi.number().integer().min(1).optional().default(5),
   attachments: Joi.array().items(Joi.string()).optional().default([]),
   status: Joi.string().optional().valid('published', 'unpublished').default('unpublished'),
-  additionalInfo: Joi.object().optional().default({})
+  additionalInfo: Joi.object().optional().default({}),
+  ...task2027Fields
 });
 
 const updateTaskSchema = Joi.object({
@@ -54,14 +77,15 @@ const updateTaskSchema = Joi.object({
   feedbackReceivedQuestionTimer: Joi.number().integer().min(1).optional(),
   attachments: Joi.array().items(Joi.string()).optional(),
   status: Joi.string().optional().valid('published', 'unpublished'),
-  additionalInfo: Joi.object().optional()
+  additionalInfo: Joi.object().optional(),
+  ...task2027Fields
 }).min(1);
 
 /**
  * POST /api/v1/assessment-tasks
  * Create a new task
  */
-router.post('/', isOptionalAuth, async (req, res) => {
+router.post('/', isOptionalAuth, staffRole, staffOfBodyProject, async (req, res) => {
   try {
     const { error, value } = createTaskSchema.validate(req.body);
     if (error) {
@@ -109,6 +133,11 @@ router.post('/', isOptionalAuth, async (req, res) => {
       additionalInfo: value.additionalInfo || {}
     };
 
+    if (value.why) taskData.why = value.why;
+    if (value.order) taskData.order = value.order;
+    if (value.tool) taskData.tool = value.tool;
+    if (value.revisedDeadline) taskData.revisedDeadline = new Date(value.revisedDeadline);
+
     const task = new Task(taskData);
     await task.save();
 
@@ -133,6 +162,10 @@ router.post('/', isOptionalAuth, async (req, res) => {
         feedbackReceivedQuestionTimer: task.feedbackReceivedQuestionTimer,
         attachments: task.attachments,
         status: task.status,
+        why: task.why || null,
+        order: task.order || null,
+        tool: task.tool || null,
+        revisedDeadline: task.revisedDeadline || null,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt
       }
@@ -189,6 +222,10 @@ router.get('/:id', isOptionalAuth, async (req, res) => {
         feedbackReceivedQuestionTimer: task.feedbackReceivedQuestionTimer,
         attachments: task.attachments,
         status: task.status,
+        why: task.why || null,
+        order: task.order || null,
+        tool: task.tool || null,
+        revisedDeadline: task.revisedDeadline || null,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt
       }
@@ -237,6 +274,10 @@ router.get('/project/:projectId', isOptionalAuth, async (req, res) => {
       feedbackReceivedQuestionTimer: task.feedbackReceivedQuestionTimer,
       attachments: task.attachments,
       status: task.status,
+      why: task.why || null,
+      order: task.order || null,
+      tool: task.tool || null,
+      revisedDeadline: task.revisedDeadline || null,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt
     }));
@@ -307,6 +348,10 @@ router.get('/', isOptionalAuth, async (req, res) => {
       feedbackReceivedQuestionTimer: task.feedbackReceivedQuestionTimer,
       attachments: task.attachments,
       status: task.status,
+      why: task.why || null,
+      order: task.order || null,
+      tool: task.tool || null,
+      revisedDeadline: task.revisedDeadline || null,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt
     }));
@@ -329,7 +374,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
  * PUT /api/v1/assessment-tasks/:id
  * Update task
  */
-router.put('/:id', isOptionalAuth, async (req, res) => {
+router.put('/:id', isOptionalAuth, staffRole, requireCourseStaff({ task: 'id' }), staffOfBodyProject, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({
@@ -391,6 +436,12 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
     if (value.attachments !== undefined) task.attachments = value.attachments;
     if (value.status !== undefined) task.status = value.status;
     if (value.additionalInfo !== undefined) task.additionalInfo = value.additionalInfo;
+    if (value.why !== undefined) task.why = value.why || null;
+    if (value.order !== undefined) task.order = value.order || null;
+    if (value.tool !== undefined) task.tool = value.tool || null;
+    if (value.revisedDeadline !== undefined) {
+      task.revisedDeadline = value.revisedDeadline ? new Date(value.revisedDeadline) : null;
+    }
 
     await task.save();
 
@@ -415,6 +466,10 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
         feedbackReceivedQuestionTimer: task.feedbackReceivedQuestionTimer,
         attachments: task.attachments,
         status: task.status,
+        why: task.why || null,
+        order: task.order || null,
+        tool: task.tool || null,
+        revisedDeadline: task.revisedDeadline || null,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt
       }
@@ -430,10 +485,68 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
 });
 
 /**
+ * POST /api/v1/assessment-tasks/:id/progress
+ * Record that work has started and nothing is submitted yet.
+ * Writes a row in taskprogress. The task document is not modified.
+ */
+router.post('/:id/progress', isOptionalAuth, async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid task ID format'
+      });
+    }
+
+    const schema = Joi.object({
+      studentId: Joi.string().required().trim().min(1)
+    });
+    const { error, value } = schema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request body',
+        error: error.details[0].message
+      });
+    }
+
+    const task = await Task.findById(req.params.id).select('_id');
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    const progress = await TaskProgress.findOneAndUpdate(
+      { taskId: task._id, studentId: value.studentId },
+      { $setOnInsert: { taskId: task._id, studentId: value.studentId, startedAt: new Date() } },
+      { upsert: true, new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        taskId: progress.taskId.toString(),
+        studentId: progress.studentId,
+        startedAt: progress.startedAt
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error recording task progress:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to record task progress',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+});
+
+/**
  * DELETE /api/v1/assessment-tasks/:id
  * Delete task
  */
-router.delete('/:id', isOptionalAuth, async (req, res) => {
+router.delete('/:id', isOptionalAuth, staffRole, requireCourseStaff({ task: 'id' }), async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({

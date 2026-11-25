@@ -1,7 +1,9 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
 const CoursePlanDoc = require("../models/CoursePlanDoc");
 const { isOptionalAuth } = require("../middleware/auth");
+const { escapeRegex } = require("../utils/escapeRegex");
 
 /**
  * POST /api/v1/course-plan-docs
@@ -112,6 +114,13 @@ router.patch("/:id", isOptionalAuth, async (req, res) => {
 
     const { id } = req.params;
     const updates = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid document ID format'
+      });
+    }
 
     console.log(`📝 Update fields:`, Object.keys(updates));
 
@@ -238,7 +247,7 @@ router.get("/", isOptionalAuth, async (req, res) => {
       console.log(`📋 Filtering by status: ${status}`);
     }
     if (coursePlanName) {
-      query.coursePlanName = new RegExp(coursePlanName, "i");
+      query.coursePlanName = new RegExp(escapeRegex(coursePlanName), "i");
       console.log(`📋 Filtering by coursePlanName: ${coursePlanName}`);
     }
 
@@ -301,6 +310,12 @@ router.get("/:id", isOptionalAuth, async (req, res) => {
     console.log(`📋 Get Course Plan Doc by ID: ${req.params.id}`);
 
     const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document ID format",
+      });
+    }
 
     const doc = await CoursePlanDoc.findById(id).lean();
 
@@ -325,7 +340,8 @@ router.get("/:id", isOptionalAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
+      error:
+        process.env.NODE_ENV !== "production" ? error.message : undefined,
     });
   }
 });
@@ -341,6 +357,12 @@ router.delete("/:id", isOptionalAuth, async (req, res) => {
     );
 
     const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document ID format",
+      });
+    }
 
     const doc = await CoursePlanDoc.findById(id);
 

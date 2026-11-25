@@ -3,6 +3,7 @@ const router = express.Router();
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { isOptionalAuth, isAuthenticated } = require('../middleware/auth');
+const { forbidIdentitySpoof } = require('../middleware/requestIdentity');
 const Joi = require('joi');
 
 /**
@@ -27,6 +28,7 @@ router.get('/student/:username', isOptionalAuth, async (req, res) => {
     }
 
     const username = req.params.username;
+    if (forbidIdentitySpoof(req, res, username)) return;
 
     // Build query - filter by studentId and recipientType
     const query = { 
@@ -161,9 +163,6 @@ router.get('/teacher/:username', isOptionalAuth, async (req, res) => {
  */
 router.get('/', isOptionalAuth, async (req, res) => {
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/121bb795-66ba-4714-b528-2bbf010585d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'notifications.js:157',message:'GET /notifications entry',data:{userName:req.query.userName,hasSession:!!req.session,hasUser:!!req.user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     
     const schema = Joi.object({
       userName: Joi.string().required().trim(),

@@ -7,7 +7,7 @@ const Task = require('../models/Task');
 const QuizSubmission = require('../models/QuizSubmission');
 const User = require('../models/User');
 const QuizGenerationAgent = require('../agents/QuizGenerationAgent');
-const OpenAI = require('openai');
+const { getOpenAIClient, llmConfigured } = require('../services/openaiClient');
 const { isOptionalAuth } = require('../middleware/auth');
 const actionLoggingMiddleware = require('../middleware/actionLogging');
 const Joi = require('joi');
@@ -50,10 +50,7 @@ const ensureUniqueQuestionIds = (questions) => {
   });
 };
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = llmConfigured() ? getOpenAIClient() : null;
 
 // Validation schemas
 const generateQuizSchema = Joi.object({
@@ -77,6 +74,15 @@ const createQuizSchema = Joi.object({
     })
   ).min(1).required()
 });
+
+function validateQuestionCorrectAnswers(questions) {
+  for (const q of questions) {
+    if (q.correctAnswer >= q.options.length) {
+      return `correctAnswer index ${q.correctAnswer} is out of range for question options`;
+    }
+  }
+  return null;
+}
 
 const updateQuizSchema = Joi.object({
   name: Joi.string().optional().trim().min(1),
@@ -125,7 +131,15 @@ router.post('/generate', isOptionalAuth, actionLoggingMiddleware('generate-quiz'
     // Fetch tasks if taskIds provided
     let taskKeywords = [];
     if (value.taskIds && value.taskIds.length > 0) {
-      const tasks = await Task.find({ 
+      for (const taskId of value.taskIds) {
+        if (!mongoose.Types.ObjectId.isValid(taskId)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid taskId format'
+          });
+        }
+      }
+      const tasks = await Task.find({
         _id: { $in: value.taskIds.map(id => new mongoose.Types.ObjectId(id)) },
         projectId: value.projectId
       });
@@ -244,6 +258,14 @@ router.post('/', isOptionalAuth, async (req, res) => {
       });
     }
 
+    const questionRangeError = validateQuestionCorrectAnswers(value.questions);
+    if (questionRangeError) {
+      return res.status(400).json({
+        success: false,
+        message: questionRangeError
+      });
+    }
+
     // Validate projectId exists
     if (!mongoose.Types.ObjectId.isValid(value.projectId)) {
       return res.status(400).json({
@@ -335,11 +357,20 @@ router.get('/:id', isOptionalAuth, async (req, res) => {
       });
     }
 
+    const viewerRole = req.user?.role || req.session?.userRole;
+    const questionsForClient =
+      viewerRole === 'student'
+        ? quiz.questions.map((q) => {
+            const { correctAnswer, ...rest } = q.toObject ? q.toObject() : q;
+            return rest;
+          })
+        : quiz.questions;
+
     const responseData = {
       id: quiz._id.toString(),
       name: quiz.name,
       projectId: quiz.projectId.toString(),
-      questions: quiz.questions,
+      questions: questionsForClient,
       history: quiz.history,
       createdAt: quiz.createdAt,
       updatedAt: quiz.updatedAt
@@ -744,6 +775,14 @@ router.put('/:id', isOptionalAuth, async (req, res) => {
       });
     }
 
+    const questionRangeError = validateQuestionCorrectAnswers(value.questions);
+    if (questionRangeError) {
+      return res.status(400).json({
+        success: false,
+        message: questionRangeError
+      });
+    }
+
     const quiz = await Quiz.findById(req.params.id);
     if (!quiz) {
       return res.status(404).json({
@@ -840,7 +879,18 @@ router.delete('/:id', isOptionalAuth, async (req, res) => {
   }
 });
 
-const QuizAttempt = require('../models/QuizAttempt');
+function countCorrectAnswers(quiz, answersObj) {
+  if (!answersObj || typeof answersObj !== 'object') return 0;
+  let correct = 0;
+  quiz.questions.forEach((question) => {
+    const questionId = question.id || question._id?.toString();
+    const studentAnswer = answersObj[questionId];
+    if (studentAnswer !== undefined && studentAnswer === question.correctAnswer) {
+      correct += 1;
+    }
+  });
+  return correct;
+}
 
 /**
  * GET /api/v1/assessment-quizzes/:quizId/leaderboard
@@ -863,18 +913,30 @@ router.get('/:quizId/leaderboard', isOptionalAuth, async (req, res) => {
       });
     }
 
-    // Get all attempts for this quiz, sorted by score descending
-    const attempts = await QuizAttempt.find({ quizId: req.params.quizId })
-      .sort({ score: -1, completedAt: 1 });
+    const submissions = await QuizSubmission.find({
+      quizId: req.params.quizId,
+      isSubmitted: true
+    }).sort({ score: -1, submittedAt: 1 });
 
-    const leaderboard = attempts.map(attempt => ({
-      studentId: attempt.studentId,
-      studentName: attempt.studentName,
-      score: attempt.score,
-      totalQuestions: quiz.questions.length,
-      correctAnswers: attempt.answers.filter(a => a.isCorrect).length,
-      completedAt: attempt.completedAt
-    }));
+    const leaderboard = await Promise.all(
+      submissions.map(async (submission) => {
+        const answersObj =
+          submission.answers instanceof Map
+            ? Object.fromEntries(submission.answers)
+            : submission.answers || {};
+        const studentName = await User.findOne({
+          $or: [{ username: submission.studentId }, { email: submission.studentId }]
+        }).select('fullName username').lean();
+        return {
+          studentId: submission.studentId,
+          studentName: studentName?.fullName || studentName?.username || submission.studentId,
+          score: submission.score,
+          totalQuestions: quiz.questions.length,
+          correctAnswers: countCorrectAnswers(quiz, answersObj),
+          completedAt: submission.submittedAt || submission.updatedAt
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,
@@ -911,43 +973,54 @@ router.get('/:quizId/student/:studentId', isOptionalAuth, async (req, res) => {
       });
     }
 
-    // Get the most recent attempt for this student
-    const attempt = await QuizAttempt.findOne({
+    const submission = await QuizSubmission.findOne({
       quizId: req.params.quizId,
       studentId: req.params.studentId
-    }).sort({ completedAt: -1 });
+    }).sort({ submittedAt: -1, updatedAt: -1 });
 
-    if (!attempt) {
+    if (!submission) {
       return res.status(404).json({
         success: false,
         message: 'No quiz attempt found for this student'
       });
     }
 
-    // Build answer details by matching with quiz questions
-    const answers = attempt.answers.map(answer => {
-      // Find the corresponding question in the quiz
-      const question = quiz.questions.find(q => q.id === answer.questionId);
+    const answersObj =
+      submission.answers instanceof Map
+        ? Object.fromEntries(submission.answers)
+        : submission.answers || {};
+    const commentsObj =
+      submission.comments instanceof Map
+        ? Object.fromEntries(submission.comments)
+        : submission.comments || {};
+
+    const answers = quiz.questions.map((question) => {
+      const questionId = question.id || question._id?.toString();
+      const studentAnswer = answersObj[questionId];
       return {
-        questionId: answer.questionId,
-        question: answer.question || (question ? question.question : ''),
-        options: answer.options.length > 0 ? answer.options : (question ? question.options : []),
-        correctAnswer: answer.correctAnswer,
-        studentAnswer: answer.studentAnswer,
-        isCorrect: answer.isCorrect,
-        comment: answer.comment || null
+        questionId,
+        question: question.question,
+        options: question.options || [],
+        correctAnswer: question.correctAnswer,
+        studentAnswer: studentAnswer !== undefined ? studentAnswer : null,
+        isCorrect: studentAnswer !== undefined && studentAnswer === question.correctAnswer,
+        comment: commentsObj[questionId] || null
       };
     });
+
+    const studentName = await User.findOne({
+      $or: [{ username: submission.studentId }, { email: submission.studentId }]
+    }).select('fullName username').lean();
 
     res.status(200).json({
       success: true,
       data: {
-        studentId: attempt.studentId,
-        studentName: attempt.studentName,
-        quizId: attempt.quizId.toString(),
-        answers: answers,
-        score: attempt.score,
-        completedAt: attempt.completedAt
+        studentId: submission.studentId,
+        studentName: studentName?.fullName || studentName?.username || submission.studentId,
+        quizId: submission.quizId.toString(),
+        answers,
+        score: submission.score,
+        completedAt: submission.submittedAt || submission.updatedAt
       }
     });
   } catch (error) {

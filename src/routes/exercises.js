@@ -79,7 +79,7 @@ router.get('/', isOptionalAuth, async (req, res) => {
 
     // Query exercises (convert courseId to ObjectId)
     const exercises = await Exercise.find({ 
-      courseId: mongoose.Types.ObjectId(courseId) 
+      courseId: new mongoose.Types.ObjectId(courseId) 
     }).sort({ createdAt: -1 });
 
     // Format response
@@ -206,7 +206,7 @@ router.post('/', isOptionalAuth, async (req, res) => {
 
     // Clean up empty strings to null for optional fields
     const cleanedData = {
-      courseId: mongoose.Types.ObjectId(courseId),
+      courseId: new mongoose.Types.ObjectId(courseId),
       lectureLabel: exerciseData.lectureLabel,
       title: exerciseData.title,
       description: exerciseData.description,

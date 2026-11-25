@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const User = require('../models/User');
-const { isOptionalAuth } = require('../middleware/auth');
+const { isOptionalAuth, requireRole } = require('../middleware/auth');
 const Joi = require('joi');
+
+router.use(requireRole('teacher', 'admin', 'school'));
 
 // Validation schemas
 const updateStudentSchema = Joi.object({

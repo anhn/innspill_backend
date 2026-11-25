@@ -45,7 +45,7 @@ router.get('/', (req, res) => {
 router.get('/actions', isOptionalAuth, async (req, res) => {
   try {
     const schema = Joi.object({
-      limit: Joi.number().integer().min(1).max(1000).optional(),
+      limit: Joi.number().integer().min(1).max(10000).optional(),
       sortBy: Joi.string().valid('timestamp').optional().default('timestamp'),
       sortOrder: Joi.string().valid('asc', 'desc').optional().default('desc'),
       page: Joi.number().integer().min(1).optional(),
@@ -323,8 +323,13 @@ router.post('/track', isOptionalAuth, async (req, res) => {
     const timestamp = value.timestamp ? new Date(value.timestamp) : new Date();
 
     // Prepare log data
+    const { actingUsername, isStaffRole, actingRole } = require('../middleware/requestIdentity');
+    const logUserId = isStaffRole(actingRole(req))
+      ? value.userId || actingUsername(req)
+      : actingUsername(req) || req.session?.userId;
+
     const logData = {
-      userId: value.userId || undefined,
+      userId: logUserId || undefined,
       sessionId: value.sessionId,
       ipAddress: ipAddress,
       userAgent: value.userAgent || req.get('User-Agent') || undefined,
